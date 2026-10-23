@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Chesterton",
+  "version": "0.1.0",
+  "description": "Flags PRs that contradict recorded decisions, pinned beside diff lines on GitHub PR pages.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:4000/*",
+    "http://localhost:4100/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*/*/pull/*/files*",
+        "http://localhost:4100/github/*/*/pull/*/files*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}
