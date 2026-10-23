@@ -4,10 +4,13 @@ import java.time.Instant;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
@@ -39,10 +42,21 @@ public class Verdict {
     @Column(name = "decision_id")
     private Long decisionId;
 
+    /**
+     * Read-only shadow mapping of the same {@code decision_id} column, present solely so
+     * Hibernate's schema generation emits {@code decision_id INT REFERENCES decision} (the plan's
+     * SQL, docs/build_plan.md Phase 5) as a real FK constraint. All application code reads/writes
+     * the plain {@link #decisionId} field above; this association is never set or navigated, so
+     * the wire JSON (a bare {@code decision_id} number) is unaffected.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "decision_id", referencedColumnName = "id", insertable = false, updatable = false,
+            foreignKey = @ForeignKey(name = "fk_verdict_decision_id"))
+    private Decision decision;
+
     private String verdict;
 
-    @Lob
-    @Column(name = "payload")
+    @Column(name = "payload", columnDefinition = "text")
     private String payloadJson;
 
     @Column(name = "created_at")

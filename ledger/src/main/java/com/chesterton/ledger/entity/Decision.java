@@ -7,13 +7,14 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 
 /**
  * Mirrors the `decision` table in docs/build_plan.md Phase 5. `citationsJson` holds the
  * Citation array as serialized JSON text (TEXT works identically on H2 and Postgres; the
  * postgres profile is free to promote the column to JSONB later without changing this class).
+ * Mapped as a plain {@code text} column (not {@code @Lob}) so Hibernate never routes it through
+ * PostgreSQL large-object ({@code oid}) storage, which has autocommit/streaming pitfalls.
  */
 @Entity
 @Table(name = "decision")
@@ -33,11 +34,10 @@ public class Decision {
     @Column(name = "line_end")
     private Integer lineEnd;
 
-    @Lob
+    @Column(columnDefinition = "text")
     private String summary;
 
-    @Lob
-    @Column(name = "citations")
+    @Column(name = "citations", columnDefinition = "text")
     private String citationsJson;
 
     private String source;

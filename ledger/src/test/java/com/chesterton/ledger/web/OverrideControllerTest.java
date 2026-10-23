@@ -109,4 +109,34 @@ class OverrideControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }
+
+    @Test
+    void postOverrideWithNonexistentVerdictIdReturns404() throws Exception {
+        // decision_id/verdict_id now have real FK constraints (fk_verdict_decision_id,
+        // fk_override_verdict_id) backing this, but the 404 itself is produced by the
+        // application-level check in OverrideService.create (VerdictService#getEntityOrThrow)
+        // before any insert is attempted, so behavior is unchanged from before the FK was added.
+        mockMvc.perform(post("/overrides")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"verdict_id": 999999, "reason": "no such verdict", "author": "carol"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("not_found"));
+    }
+
+    @Test
+    void postOverrideWithValidVerdictIdStillInsertsSuccessfully() throws Exception {
+        long verdictId = createFlaggedVerdict();
+
+        mockMvc.perform(post("/overrides")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"verdict_id": %d, "reason": "valid insert after FK addition", "author": "dave"}
+                                """.formatted(verdictId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.verdict_id").value(verdictId))
+                .andExpect(jsonPath("$.verdict.id").value(verdictId));
+    }
 }

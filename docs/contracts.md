@@ -175,7 +175,7 @@ summary is markdown listing each flag with citations.
 - `POST /decisions` `{repo, file, line_start, line_end, summary, citations: [Citation], source}` → row with `id`. `source` ∈ `seed | verdict | override | plaque`.
 - `GET /decisions?repo=&file=` → list
 - `POST /verdicts` `{repo, pr, head_sha, hunk_hash, decision_id|null, verdict, payload}` — upsert on `(repo, head_sha, hunk_hash)`; `payload` is the full Flag JSON → returns row with `id`
-- `GET /verdicts?repo=&pr=` → `[{id, ..., payload}]`
+- `GET /verdicts?repo=&pr=` → `[{id, ..., payload}]`; `pr` optional — omitted returns all rows for the repo
 - `POST /overrides` `{verdict_id, reason, author}` → row; side effect: inserts a new `decision` (source `override`) anchored to the verdict's file/lines so future PRs cite it
 - `GET /overrides?repo=` → list joined with verdict info
 - `GET /fences/by-file?repo=` → `[{file, fence_count, loc}]` (`loc` = lines of code if known, else 0)
@@ -184,9 +184,10 @@ summary is markdown listing each flag with citations.
 ### gateway (Node)
 
 - `POST /webhooks/github` — verifies `X-Hub-Signature-256` HMAC with `GITHUB_WEBHOOK_SECRET`; on `pull_request` action `opened|synchronize`: stores raw payload (Mongo or file fallback), fetches PR diff from GitHub API, calls analyzer `/analyze`, triage `/score`, filters, calls verdict `/judge`. Responds `202 {"accepted":true}` immediately is NOT required — synchronous processing is fine for demo, respond `200` with `{"flags": N}` when done.
-- `GET /verdicts?repo=&pr=` → `{"flags": [Flag, ...]}` (reads ledger; merges override/dismiss status)
+- `GET /verdicts?repo=&pr=` → `{"flags": [Flag, ...]}` (reads ledger; merges override/dismiss status). `pr` optional — omitted returns all flags for the repo (dashboard verdict history).
 - `POST /flags/{id}/dismiss` → marks flag dismissed (ledger payload status update)
 - `POST /overrides` `{verdict_id, reason, author}` → proxies ledger, returns created override
+- `GET /overrides?repo=` → proxy of ledger (dashboard overrides view)
 - `POST /plaque` `{repo, pr, flag_id}` → posts a GitHub review comment with a ```suggestion block inserting one fence comment line above the guarded line. Comment line format: `<comment-leader> Fence: <summary> — see <first citation title> (<first citation url>)` where comment-leader matches the file type (`#` for .py, `//` for js/ts/go/java/rs).
 - `GET /fences/by-file?repo=` → proxy of ledger
 - `GET /decisions?repo=&file=` → proxy of ledger (dashboard fence side panel)
