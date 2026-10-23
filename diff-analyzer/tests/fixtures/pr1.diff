@@ -1,0 +1,13 @@
+diff --git a/services/payments/client.py b/services/payments/client.py
+index c1f660d..ccc8363 100644
+--- a/services/payments/client.py
++++ b/services/payments/client.py
+@@ -2,7 +2,7 @@
+ 
+ import time
+ 
+-MAX_RETRIES = 3
++MAX_RETRIES = 50
+ BACKOFF_SECONDS = 2
+ TIMEOUT_SECONDS = 10
+ DEFAULT_CURRENCY = "USD"

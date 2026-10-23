@@ -1,0 +1,24 @@
+[package]
+name = "diff-analyzer"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "diff_analyzer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "diff-analyzer"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8.9"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net"] }
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+tower = { version = "0.5.3", features = ["util"] }
