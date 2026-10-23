@@ -74,8 +74,8 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
-      - run: npm test
       - run: npm run build
+      - run: npm test
 
   diff-analyzer:
     name: diff-analyzer (cargo)
