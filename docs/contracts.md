@@ -189,6 +189,7 @@ summary is markdown listing each flag with citations.
 - `POST /overrides` `{verdict_id, reason, author}` → proxies ledger, returns created override
 - `POST /plaque` `{repo, pr, flag_id}` → posts a GitHub review comment with a ```suggestion block inserting one fence comment line above the guarded line. Comment line format: `<comment-leader> Fence: <summary> — see <first citation title> (<first citation url>)` where comment-leader matches the file type (`#` for .py, `//` for js/ts/go/java/rs).
 - `GET /fences/by-file?repo=` → proxy of ledger
+- `GET /decisions?repo=&file=` → proxy of ledger (dashboard fence side panel)
 - `GET /stats?repo=` → proxy of ledger
 - CORS: allow all origins (extension + dashboard).
 
