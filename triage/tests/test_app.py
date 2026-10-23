@@ -1,6 +1,7 @@
 """Integration tests for the FastAPI wiring: /healthz and /score."""
 from fastapi.testclient import TestClient
 
+import app as app_module
 from app import app
 
 client = TestClient(app)
@@ -65,3 +66,41 @@ def test_score_handles_multiple_hunks_in_order():
     resp = client.post("/score", json={"hunks": [hunk_a, hunk_b]})
     scores = resp.json()["scores"]
     assert [s["hunk_hash"] for s in scores] == ["hash-a", "hash-b"]
+
+
+def test_score_delegates_to_model_when_model_path_is_loaded(monkeypatch):
+    """When a model is loaded (MODEL_PATH set + loadable), /score must use it
+    instead of rules.score_hunk."""
+    import train_torch
+
+    monkeypatch.setattr(app_module, "_model", object())
+    monkeypatch.setattr(
+        train_torch, "score_with_model", lambda model, hunk: (0.42, ["from_model"])
+    )
+
+    hunk = make_hunk(["MAX_RETRIES = 3"], ["MAX_RETRIES = 50"], hunk_hash="model-path")
+    resp = client.post("/score", json={"hunks": [hunk]})
+    assert resp.status_code == 200
+    entry = resp.json()["scores"][0]
+    assert entry["score"] == 0.42
+    assert entry["reasons"] == ["from_model"]
+
+
+def test_score_falls_back_to_rules_when_model_scorer_raises(monkeypatch):
+    """If the model is loaded but scoring with it raises, the service must
+    fall back to the rules-based scorer and still return a valid response."""
+    import train_torch
+
+    def _boom(model, hunk):
+        raise RuntimeError("model inference blew up")
+
+    monkeypatch.setattr(app_module, "_model", object())
+    monkeypatch.setattr(train_torch, "score_with_model", _boom)
+
+    hunk = make_hunk(["MAX_RETRIES = 3"], ["MAX_RETRIES = 50"], hunk_hash="model-fallback")
+    resp = client.post("/score", json={"hunks": [hunk]})
+    assert resp.status_code == 200
+    entry = resp.json()["scores"][0]
+    # Falls back to rules.score_hunk, which flags the retry-cap demo hunk.
+    assert entry["score"] >= 0.5
+    assert "changed_numeric_constant" in entry["reasons"]

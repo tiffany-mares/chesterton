@@ -23,17 +23,68 @@ REASON_REMOVED_ERROR_HANDLING = "removed_error_handling"
 REASON_COMMENT_ONLY_CHANGE = "comment_only_change"
 REASON_RENAME_ONLY = "rename_only"
 
-_CONDITIONAL_RE = re.compile(r"(?i)(?<![a-zA-Z])(if|elif|guard|raise|return)(?![a-zA-Z])")
-_ERROR_HANDLING_RE = re.compile(r"(?i)(?<![a-zA-Z])(try|except|catch|error)(?![a-zA-Z])")
-_RETRY_TIMEOUT_RE = re.compile(r"(?i)(?<![a-zA-Z])(retry|retries|timeout|limit|cap)(?![a-zA-Z])")
+_CONDITIONAL_KEYWORDS = {"if", "elif", "guard", "raise", "return"}
+_ERROR_HANDLING_KEYWORDS = {"try", "except", "catch", "error"}
+_RETRY_TIMEOUT_KEYWORDS = {"retry", "timeout", "limit", "cap"}
 _NUMERIC_ASSIGNMENT_RE = re.compile(r"([A-Za-z_]\w*)\s*=\s*(-?\d+(?:\.\d+)?)")
 _COMMENT_LINE_RE = re.compile(r"^\s*(#|//|/\*|\*)")
 _TOKEN_RE = re.compile(r"[A-Za-z_]\w*|\d+\.\d+|\d+|'[^']*'|\"[^\"]*\"|\S")
 _IDENTIFIER_TOKEN_RE = re.compile(r"^[A-Za-z_]\w*$")
+# camelCase/underscore sub-word splitting for identifiers: runs of uppercase
+# letters followed by lowercase/digits, or runs of lowercase/digits.
+_CAMEL_SUBWORD_RE = re.compile(r"[A-Z]+[a-z0-9]*|[a-z0-9]+")
+# Suffixes stripped (with their replacement) to normalize simple plural/verb
+# forms before comparing a sub-word against a keyword, e.g. "retries" -> "retry".
+_SUBWORD_SUFFIXES = (("ies", "y"), ("ying", "y"), ("ing", ""), ("ed", ""), ("es", ""), ("s", ""))
 
 
-def _any_line_matches(lines: Iterable[str], pattern: re.Pattern) -> bool:
-    return any(pattern.search(line) for line in lines)
+def _line_has_keyword_token(line: str, keywords: set[str]) -> bool:
+    """True iff `line` contains one of `keywords` as a standalone code token.
+
+    Tokens are produced by `_TOKEN_RE`, which already groups letters, digits,
+    and underscores into a single identifier token - so `skip_if_empty` is one
+    token and never equals the keyword `if`.
+    """
+    for token in _TOKEN_RE.findall(line):
+        if token.lower() in keywords:
+            return True
+    return False
+
+
+def _any_line_has_keyword_token(lines: Iterable[str], keywords: set[str]) -> bool:
+    return any(_line_has_keyword_token(line, keywords) for line in lines)
+
+
+def _split_identifier_subwords(identifier: str) -> list[str]:
+    """Split an identifier into lowercase sub-words on `_` and camelCase."""
+    subwords: list[str] = []
+    for part in identifier.split("_"):
+        if not part:
+            continue
+        subwords.extend(_CAMEL_SUBWORD_RE.findall(part))
+    return [w.lower() for w in subwords if w]
+
+
+def _stem_subword(word: str) -> str:
+    """Strip a simple plural/verb suffix so e.g. "retries" stems to "retry"."""
+    for suffix, replacement in _SUBWORD_SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            return word[: -len(suffix)] + replacement
+    return word
+
+
+def _line_has_retry_timeout_subword(line: str) -> bool:
+    for token in _TOKEN_RE.findall(line):
+        if not _IDENTIFIER_TOKEN_RE.match(token):
+            continue
+        for subword in _split_identifier_subwords(token):
+            if subword in _RETRY_TIMEOUT_KEYWORDS or _stem_subword(subword) in _RETRY_TIMEOUT_KEYWORDS:
+                return True
+    return False
+
+
+def _any_line_has_retry_timeout_subword(lines: Iterable[str]) -> bool:
+    return any(_line_has_retry_timeout_subword(line) for line in lines)
 
 
 def _is_comment_only_change(old_lines: list[str], new_lines: list[str]) -> bool:
@@ -44,9 +95,9 @@ def _is_comment_only_change(old_lines: list[str], new_lines: list[str]) -> bool:
 
 
 def _removed_conditional(old_lines: list[str], new_lines: list[str]) -> bool:
-    return _any_line_matches(old_lines, _CONDITIONAL_RE) and not _any_line_matches(
-        new_lines, _CONDITIONAL_RE
-    )
+    return _any_line_has_keyword_token(
+        old_lines, _CONDITIONAL_KEYWORDS
+    ) and not _any_line_has_keyword_token(new_lines, _CONDITIONAL_KEYWORDS)
 
 
 def _numeric_assignments(lines: Iterable[str]) -> dict[str, str]:
@@ -68,13 +119,13 @@ def _changed_numeric_constant(old_lines: list[str], new_lines: list[str]) -> boo
 
 
 def _removed_retry_or_timeout(old_lines: list[str]) -> bool:
-    return _any_line_matches(old_lines, _RETRY_TIMEOUT_RE)
+    return _any_line_has_retry_timeout_subword(old_lines)
 
 
 def _removed_error_handling(old_lines: list[str], new_lines: list[str]) -> bool:
-    return _any_line_matches(old_lines, _ERROR_HANDLING_RE) and not _any_line_matches(
-        new_lines, _ERROR_HANDLING_RE
-    )
+    return _any_line_has_keyword_token(
+        old_lines, _ERROR_HANDLING_KEYWORDS
+    ) and not _any_line_has_keyword_token(new_lines, _ERROR_HANDLING_KEYWORDS)
 
 
 def _is_rename_only(old_lines: list[str], new_lines: list[str]) -> bool:

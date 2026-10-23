@@ -112,3 +112,36 @@ def test_rename_refactor_demo_hunk_scores_below_half():
     )
     score, reasons = score_hunk(hunk)
     assert score < 0.5
+
+
+def test_keyword_inside_identifier_does_not_fire_removed_conditional():
+    # "if" is a keyword, but "skip_if_empty" is a single identifier token -
+    # removing/adding this line must not be treated as removing a conditional.
+    hunk = make_hunk(
+        old_lines=["skip_if_empty = True"],
+        new_lines=["skip_if_empty = False"],
+    )
+    score, reasons = score_hunk(hunk)
+    assert "removed_conditional" not in reasons
+
+
+def test_max_retries_identifier_still_fires_removed_retry_or_timeout():
+    hunk = make_hunk(
+        old_lines=["MAX_RETRIES = 3"],
+        new_lines=["call(req)"],
+    )
+    score, reasons = score_hunk(hunk)
+    assert "removed_retry_or_timeout" in reasons
+
+
+def test_identifier_substring_does_not_falsely_match_keywords():
+    # "classify" contains "if" and "class" as substrings, but is one
+    # identifier token and must not fire any keyword-based rule.
+    hunk = make_hunk(
+        old_lines=["classify(record)"],
+        new_lines=[],
+    )
+    score, reasons = score_hunk(hunk)
+    assert "removed_conditional" not in reasons
+    assert "removed_error_handling" not in reasons
+    assert "removed_retry_or_timeout" not in reasons
