@@ -5,7 +5,8 @@ import { MockAgent, setGlobalDispatcher } from "undici";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/server.js";
-import { createRawEventStore, LocalOverrideState } from "../src/store.js";
+import { createRawEventStore, JudgeCache, LocalOverrideState } from "../src/store.js";
+import type { Flag } from "../src/types.js";
 
 let mockAgent: MockAgent;
 let tmpDir: string;
@@ -22,7 +23,7 @@ afterEach(async () => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-async function buildApp() {
+async function buildApp(judgeCache?: JudgeCache<Flag[]>) {
   const rawEventStore = await createRawEventStore({ mongoUrl: undefined, rawEventsDir: tmpDir });
   const localState = LocalOverrideState.load(path.join(tmpDir, "local-state.json"));
   const app = createApp({
@@ -35,6 +36,7 @@ async function buildApp() {
     webhookSecret: "devsecret",
     rawEventStore,
     localState,
+    judgeCache,
   });
   return { app, localState };
 }
@@ -165,7 +167,11 @@ describe("GET /verdicts", () => {
         verdict: "YES",
         reason: "Comment references 30, which this change removed or altered.",
         citations: [],
-        hunk_hash: "hh-timeout",
+        // Controller ruling (task-11 review finding 1): a stale_comment
+        // Flag's public hunk_hash is the synthetic ledger key, matching
+        // the ledger row's own hunk_hash above -- not the inherited real
+        // hunk_hash ("hh-timeout").
+        hunk_hash: "stale:services/checkout/api.py:7",
         status: "open",
       },
     };
@@ -348,6 +354,75 @@ describe("POST /flags/:id/dismiss", () => {
     // The server must keep serving afterwards too.
     const health = await request(app).get("/healthz");
     expect(health.status).toBe(200);
+  });
+
+  // Regression (controller ruling, task-11 review finding 1): verdict now
+  // sets a stale_comment Flag's PUBLIC hunk_hash to the SAME synthetic
+  // "stale:<file>:<line>" key it upserts the ledger row under (instead of
+  // the inherited real hunk_hash it diverged from before). This test proves
+  // that invariant is actually load-bearing for dismiss durability: the
+  // dismiss route's best-effort ledger write
+  // (`upsertVerdict(..., hunk_hash: flag.hunk_hash, ...)`) must land on the
+  // SAME row the ledger already has for this flag, not a second row under a
+  // different key -- otherwise a dismissed stale flag could resurface as
+  // open after a gateway restart (GET /verdicts would read the original,
+  // still-open row).
+  it("durability: dismissing a stale_comment flag upserts the ledger row under the SAME hunk_hash the flag carries (same row, not a duplicate)", async () => {
+    const flag: Flag = {
+      id: 6,
+      repo: "acme/storefront",
+      pr: 3,
+      head_sha: "sha3",
+      file: "services/checkout/api.py",
+      line: 7,
+      kind: "stale_comment",
+      verdict: "YES",
+      reason: "Comment references 30, which this change removed or altered.",
+      citations: [],
+      hunk_hash: "stale:services/checkout/api.py:7",
+      status: "open",
+    };
+
+    // Stateful ledger mock: upserts on (repo, head_sha, hunk_hash), like the
+    // real Spring Boot ledger (VerdictService.upsert). Pre-seeded with the
+    // row verdict's original /judge persistVerdict call created for this
+    // flag -- keyed by flag.hunk_hash, exactly as the controller ruling
+    // requires.
+    const rows = new Map<string, { id: number; payload: unknown }>();
+    rows.set(`${flag.repo}:${flag.head_sha}:${flag.hunk_hash}`, { id: flag.id, payload: { ...flag } });
+    let postCount = 0;
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/verdicts", method: "POST" })
+      .reply(200, (opts) => {
+        postCount += 1;
+        const body = JSON.parse(String(opts.body)) as {
+          repo: string;
+          head_sha: string;
+          hunk_hash: string;
+          verdict: string;
+          payload: unknown;
+        };
+        const key = `${body.repo}:${body.head_sha}:${body.hunk_hash}`;
+        const existing = rows.get(key);
+        const id = existing ? existing.id : 1000 + rows.size;
+        rows.set(key, { id, payload: body.payload });
+        return { id };
+      });
+
+    const judgeCache = new JudgeCache<Flag[]>();
+    judgeCache.set(flag.repo, flag.pr, [flag]);
+    const { app } = await buildApp(judgeCache);
+
+    const res = await request(app).post(`/flags/${flag.id}/dismiss`).send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, id: flag.id, status: "dismissed" });
+
+    expect(postCount).toBe(1);
+    expect(rows.size).toBe(1); // no duplicate row under a different key
+    const updated = rows.get(`${flag.repo}:${flag.head_sha}:${flag.hunk_hash}`);
+    expect(updated?.id).toBe(flag.id); // same row updated, not a new one
+    expect((updated?.payload as { status: string }).status).toBe("dismissed");
   });
 });
 

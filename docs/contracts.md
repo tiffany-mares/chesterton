@@ -99,6 +99,7 @@ overlaps the hunk's old line range.
 
 `kind` ∈ `contradiction | stale_comment`. `line` is the line in the NEW file the flag pins to
 (for pure deletions, the line before the deletion). `status` ∈ `open | dismissed | overridden`.
+For `stale_comment` flags, `hunk_hash` is the synthetic key `stale:<file>:<line>` (also the ledger/cache row key).
 
 ## Service APIs
 

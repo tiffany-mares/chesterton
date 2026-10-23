@@ -185,7 +185,16 @@ func (s *Server) processComment(ctx context.Context, repo string, pr int, headSH
 	// overwrites the other (losing a flag nondeterministically -- this is
 	// exactly PR3 from docs/contracts.md's "three demo PRs"). Mirror the
 	// cache key's own disambiguation (above) for the ledger write too.
-	ledgerHunkHash := fmt.Sprintf("stale:%s:%d", c.File, c.Line)
+	//
+	// This synthetic key is ALSO used as the stale_comment Flag's public
+	// HunkHash (not c.HunkHash, the inherited real hash) -- one variable,
+	// used for both the ledger upsert and the Flag field -- so the ledger
+	// row key and the public contract value can never diverge. Without
+	// this, gateway's POST /flags/:id/dismiss (which upserts the ledger
+	// using flag.hunk_hash) would target the wrong row for a stale flag
+	// and a dismissed stale_comment could resurface as open after a
+	// gateway restart (docs/contracts.md "hunk_hash" note on Flag).
+	syntheticHunkHash := fmt.Sprintf("stale:%s:%d", c.File, c.Line)
 
 	resp, err := s.estelle.Stale(ctx, repo, c.File, c.Text, c.Line, hunk)
 	if err != nil {
@@ -205,7 +214,7 @@ func (s *Server) processComment(ctx context.Context, repo string, pr int, headSH
 			// repo+head_sha+hunk_hash": file+line uniquely identifies a
 			// stale comment/check, whereas hunk_hash may collide (e.g. two
 			// comments anchored to the same hunk).
-			ID:        fallbackFlagID(repo, headSHA, fmt.Sprintf("stale:%s:%d", c.File, c.Line)),
+			ID:        fallbackFlagID(repo, headSHA, syntheticHunkHash),
 			Repo:      repo,
 			PR:        pr,
 			HeadSHA:   headSHA,
@@ -215,14 +224,14 @@ func (s *Server) processComment(ctx context.Context, repo string, pr int, headSH
 			Verdict:   verdictValue,
 			Reason:    resp.Reason,
 			Citations: resp.Citations,
-			HunkHash:  c.HunkHash,
+			HunkHash:  syntheticHunkHash,
 			Status:    "open",
 		}
-		s.persistVerdict(ctx, repo, pr, headSHA, ledgerHunkHash, verdictValue, &flag, true)
+		s.persistVerdict(ctx, repo, pr, headSHA, syntheticHunkHash, verdictValue, &flag, true)
 		result = &flag
 	} else {
-		noFlag := Flag{Repo: repo, PR: pr, HeadSHA: headSHA, File: c.File, Line: c.Line, Kind: "stale_comment", Verdict: verdictValue, Reason: resp.Reason, Citations: resp.Citations, HunkHash: c.HunkHash}
-		s.persistVerdict(ctx, repo, pr, headSHA, ledgerHunkHash, verdictValue, &noFlag, false)
+		noFlag := Flag{Repo: repo, PR: pr, HeadSHA: headSHA, File: c.File, Line: c.Line, Kind: "stale_comment", Verdict: verdictValue, Reason: resp.Reason, Citations: resp.Citations, HunkHash: syntheticHunkHash}
+		s.persistVerdict(ctx, repo, pr, headSHA, syntheticHunkHash, verdictValue, &noFlag, false)
 	}
 
 	s.storeInCache(ctx, key, result)

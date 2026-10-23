@@ -279,6 +279,15 @@ func TestHandleJudge_StaleComment_ProducesStaleFlag(t *testing.T) {
 	if f.Line != 29 {
 		t.Fatalf("expected flag line to be comment_line 29, got %d", f.Line)
 	}
+	// Controller ruling: for stale_comment flags, the PUBLIC HunkHash is the
+	// synthetic "stale:<file>:<line>" key, NOT the inherited real hunk_hash
+	// ("hh-timeout") -- the same key the ledger row is upserted under. This
+	// keeps gateway's POST /flags/:id/dismiss (which upserts the ledger by
+	// flag.hunk_hash) targeting the same row the ledger already has.
+	wantHunkHash := "stale:services/checkout/api.py:29"
+	if f.HunkHash != wantHunkHash {
+		t.Fatalf("expected flag hunk_hash %q (synthetic ledger key), got %q", wantHunkHash, f.HunkHash)
+	}
 }
 
 // TestHandleJudge_StaleCommentAdjacentToItsHunk_DoesNotCollideInLedger
@@ -383,6 +392,14 @@ func TestHandleJudge_StaleCommentAdjacentToItsHunk_DoesNotCollideInLedger(t *tes
 	if len(resp.Flags) != 1 || resp.Flags[0].Kind != "stale_comment" {
 		t.Fatalf("expected exactly 1 stale_comment flag in the response, got %+v", resp.Flags)
 	}
+	// Controller ruling: the public Flag.HunkHash for a stale_comment flag
+	// is the synthetic ledger key, not the inherited real hunk_hash
+	// ("hh-timeout") -- one variable, used for both the ledger upsert and
+	// the Flag field, so they can never diverge.
+	wantHunkHash := "stale:services/checkout/api.py:7"
+	if resp.Flags[0].HunkHash != wantHunkHash {
+		t.Fatalf("expected flag hunk_hash %q (synthetic ledger key), got %q", wantHunkHash, resp.Flags[0].HunkHash)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -396,6 +413,14 @@ func TestHandleJudge_StaleCommentAdjacentToItsHunk_DoesNotCollideInLedger(t *tes
 	}
 	if hr.verdict != "NO_EVIDENCE" {
 		t.Fatalf("hunk ask-check row was overwritten by the comment's stale-check write: verdict=%q payload=%s", hr.verdict, hr.payload)
+	}
+	commentKey := "acme/storefront:shaPR3:" + wantHunkHash
+	cr, ok := rows[commentKey]
+	if !ok {
+		t.Fatalf("expected a ledger row for the comment's stale-check at the SAME key as flag.hunk_hash (%q), rows: %+v", commentKey, rows)
+	}
+	if cr.verdict != "YES" {
+		t.Fatalf("expected comment stale-check row verdict YES, got %q", cr.verdict)
 	}
 }
 

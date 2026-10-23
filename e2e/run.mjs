@@ -50,6 +50,11 @@ function sleep(ms) {
 
 const children = []; // { name, proc }
 let shuttingDown = false;
+// Exit code used by the SIGINT/SIGTERM handlers below. Stays 1 (interrupted
+// mid-run = failure) until the run has fully passed and is blocking in
+// --keep-alive mode, at which point Ctrl+C is the expected/successful way
+// to end the demo, so it flips to 0.
+let interruptExitCode = 1;
 
 function pushTail(tail, data) {
   const lines = data.toString().split(/\r?\n/).filter(Boolean);
@@ -78,6 +83,13 @@ function registerChild(name, proc) {
   const entry = { name, proc, tail };
   children.push(entry);
   return entry;
+}
+
+/** Removes a tracked child from the cleanup list (e.g. once it has exited
+ * normally and no longer needs to be killed on a later failure path). */
+function removeChild(entry) {
+  const idx = children.indexOf(entry);
+  if (idx !== -1) children.splice(idx, 1);
 }
 
 function killTree(pid) {
@@ -114,11 +126,11 @@ function killAll() {
 process.on("exit", killAll);
 process.on("SIGINT", () => {
   killAll();
-  process.exit(1);
+  process.exit(interruptExitCode);
 });
 process.on("SIGTERM", () => {
   killAll();
-  process.exit(1);
+  process.exit(interruptExitCode);
 });
 process.on("uncaughtException", (err) => {
   console.error("uncaught exception:", err);
@@ -140,7 +152,14 @@ function spawnService(name, command, args, opts = {}) {
   return proc;
 }
 
-/** Runs a one-shot build/setup command to completion; rejects on non-zero exit. */
+/**
+ * Runs a one-shot build/setup command to completion; rejects on non-zero
+ * exit. Tracked in the same `children` cleanup list as long-running
+ * services (and removed once it exits normally) so that if it's one of
+ * several run in parallel (e.g. the analyzer/verdict builds below) and a
+ * *sibling* fails first, killAll() on the resulting failure path also
+ * kills this one instead of leaving it to finish (or hang) unsupervised.
+ */
 function runToCompletion(name, command, args, opts = {}) {
   return new Promise((resolve, reject) => {
     log(name, `running: ${command} ${args.join(" ")}`);
@@ -151,11 +170,17 @@ function runToCompletion(name, command, args, opts = {}) {
       windowsHide: true,
       stdio: "pipe",
     });
+    const entry = { name, proc, tail: [] };
+    children.push(entry);
     let out = "";
     proc.stdout?.on("data", (d) => (out += d.toString()));
     proc.stderr?.on("data", (d) => (out += d.toString()));
-    proc.on("error", reject);
+    proc.on("error", (err) => {
+      removeChild(entry);
+      reject(err);
+    });
     proc.on("exit", (code) => {
+      removeChild(entry);
       if (code === 0) {
         resolve(out);
       } else {
@@ -214,6 +239,14 @@ function record(name, pass, detail) {
   results.push({ name, pass, detail });
   const tag = pass ? "PASS" : "FAIL";
   console.log(`${tag} - ${name}${detail ? ": " + detail : ""}`);
+}
+
+/** Records an informational line that is NOT counted in the pass/fail tally
+ * (e.g. a step intentionally skipped via SKIP_LEDGER=1, as opposed to a step
+ * that was supposed to run and didn't). */
+function recordSkip(name, detail) {
+  results.push({ name, pass: true, detail, skip: true });
+  console.log(`SKIP - ${name}${detail ? ": " + detail : ""}`);
 }
 
 // ---------------------------------------------------------------- main
@@ -336,8 +369,16 @@ async function main() {
     } catch (err) {
       record("ledger import knowledge.json", false, err instanceof Error ? err.message : String(err));
     }
+  } else if (SKIP_LEDGER) {
+    // Intentionally skipped (not a failure): the ledger was never asked to
+    // boot in this mode, so there's nothing to import into and gateway is
+    // expected to run on its in-memory fallback. Excluded from the
+    // pass/fail tally so SKIP_LEDGER=1 can still exit 0.
+    recordSkip("ledger import knowledge.json", "SKIP_LEDGER=1: ledger intentionally not booted");
   } else {
-    record("ledger import knowledge.json", false, "ledger is not up (SKIP_LEDGER or boot timeout) -- SKIPPED");
+    // The ledger WAS supposed to come up (SKIP_LEDGER not set) but didn't
+    // (boot timeout) -- that's a real failure, not a skip.
+    record("ledger import knowledge.json", false, "ledger failed to become healthy within the boot timeout");
   }
 
   // --- helpers against the running stack ---
@@ -415,10 +456,14 @@ async function main() {
   // --- summary ---
   console.log("\n=== SUMMARY ===");
   for (const r of results) {
-    console.log(`${r.pass ? "PASS" : "FAIL"} - ${r.name}`);
+    console.log(`${r.skip ? "SKIP" : r.pass ? "PASS" : "FAIL"} - ${r.name}`);
   }
-  const failed = results.filter((r) => !r.pass);
-  console.log(`\n${results.length - failed.length}/${results.length} assertions passed.`);
+  // SKIP entries (e.g. "ledger import knowledge.json" under SKIP_LEDGER=1)
+  // are informational and excluded from the tally entirely -- they are
+  // neither a pass nor a fail -- so SKIP_LEDGER mode can still exit 0.
+  const tallied = results.filter((r) => !r.skip);
+  const failed = tallied.filter((r) => !r.pass);
+  console.log(`\n${tallied.length - failed.length}/${tallied.length} assertions passed.`);
 
   if (failed.length === 0) {
     console.log("\nALL GREEN.");
@@ -429,7 +474,10 @@ async function main() {
         console.log(`  ${name.padEnd(9)} ${url}`);
       }
       console.log("\nPress Ctrl+C to stop all services.");
-      shuttingDown = false; // keep killAll() from firing on normal exit path below
+      // The run passed and we're now just holding the stack up for the
+      // demo -- Ctrl+C from here is the expected, successful way to end
+      // it, so it should exit 0, not the default "interrupted" exit 1.
+      interruptExitCode = 0;
       await new Promise(() => {}); // block forever until SIGINT/SIGTERM
       return;
     }
@@ -446,7 +494,7 @@ main().catch((err) => {
   console.error("\ne2e run crashed:", err instanceof Error ? err.stack ?? err.message : err);
   console.log("\n=== SUMMARY (partial -- run crashed before completing) ===");
   for (const r of results) {
-    console.log(`${r.pass ? "PASS" : "FAIL"} - ${r.name}`);
+    console.log(`${r.skip ? "SKIP" : r.pass ? "PASS" : "FAIL"} - ${r.name}`);
   }
   killAll();
   process.exit(1);
