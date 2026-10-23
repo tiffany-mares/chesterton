@@ -1,0 +1,31 @@
+{
+  "name": "@chesterton/gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chesterton gateway: webhook intake, pipeline orchestration (diff -> analyze -> triage -> judge), and the REST API consumed by the extension and dashboard.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "mongodb": "^6.11.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "undici": "^7.2.0",
+    "vitest": "^2.1.8"
+  }
+}
