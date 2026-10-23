@@ -213,6 +213,11 @@ Card shows: kind badge, reason, citation links, buttons `Dismiss`, `Override…`
 - `prs.json` — `{"prs": [{"number": 1, "title", "branch", "base": "main", "head_sha", "diff_file": "prs/1.diff", "author"}]}`
 - `prs/{n}.diff` — unified diff for each demo PR (git diff main...branch).
 
+Note: prs.json contains the 3 live demo PRs (numbers 1–3) **plus ~18 "historical" fix PRs
+(numbers 101–118, branch `fix/<fence-id>`)** that fence citations point at. Historical PRs
+exist only as metadata + a diff file — their branches are NOT git refs in demo-repo. The mock
+GitHub service must serve PR pages/API for them from prs.json alone.
+
 The three demo PRs and expected outcomes (the e2e acceptance):
 1. PR 1 `demo/retry-cap-removal` — changes `MAX_RETRIES = 3` → `MAX_RETRIES = 50` in `services/payments/client.py` → **1 contradiction flag** citing slack + linear + pr (3 citations).
 2. PR 2 `demo/harmless-refactor` — renames a local variable in `services/inventory/stock.py` → **0 flags**.
