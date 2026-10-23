@@ -102,7 +102,7 @@ func (s *Server) handleJudge(w http.ResponseWriter, r *http.Request) {
 
 	conclusion := conclusionFor(flags)
 	summary := buildSummary(flags)
-	checkRunID, err := s.checkRuns.Post(ctx, req.Repo, req.HeadSHA, conclusion, summary)
+	checkRunID, err := s.checkRuns.Post(ctx, req.Repo, req.HeadSHA, conclusion, summary, req.InstallationToken)
 	if err != nil {
 		// The brief only requires ledger failures to be tolerated; a failed
 		// check-run post is surfaced as an error since it's a primary
@@ -187,6 +187,11 @@ func (s *Server) processComment(ctx context.Context, repo string, pr int, headSH
 	var result *Flag
 	if resp.Stale {
 		flag := Flag{
+			// Discriminator is file+line, not hunk_hash, deliberately
+			// deviating from task-6-brief.md's "FNV-1a of
+			// repo+head_sha+hunk_hash": file+line uniquely identifies a
+			// stale comment/check, whereas hunk_hash may collide (e.g. two
+			// comments anchored to the same hunk).
 			ID:        fallbackFlagID(repo, headSHA, fmt.Sprintf("stale:%s:%d", c.File, c.Line)),
 			Repo:      repo,
 			PR:        pr,

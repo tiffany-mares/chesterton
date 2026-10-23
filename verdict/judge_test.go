@@ -19,6 +19,7 @@ type testDeps struct {
 	staleCalls    atomic.Int64
 	ledgerCalls   atomic.Int64
 	checkRunCalls atomic.Int64
+	checkRunAuth  atomic.Value // string, last Authorization header seen (may be absent -> "")
 
 	askVerdict  Verdict
 	staleResp   staleResponse
@@ -55,6 +56,7 @@ func newTestServer(t *testing.T, flagged bool) (*Server, *testDeps) {
 
 	d.checkRunSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d.checkRunCalls.Add(1)
+		d.checkRunAuth.Store(r.Header.Get("Authorization"))
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(checkRunRow{ID: 12})
 	}))
@@ -139,6 +141,40 @@ func TestHandleJudge_FlaggedHunk_ProducesFlagAndActionRequiredCheckRun(t *testin
 	}
 	if d.checkRunCalls.Load() != 1 {
 		t.Fatalf("expected exactly 1 check-run post")
+	}
+}
+
+// TestHandleJudge_InstallationToken_ThreadsAuthorizationHeader asserts that
+// JudgeRequest.InstallationToken is forwarded to the check-run POST as
+// "Authorization: Bearer <token>" when present, and that no Authorization
+// header is sent when the request omits the token (mock mode). See
+// docs/contracts.md "verdict (Go)" and "mocks — GitHub API emulation".
+func TestHandleJudge_InstallationToken_ThreadsAuthorizationHeader(t *testing.T) {
+	srv, d := newTestServer(t, true)
+	defer d.close()
+
+	rec, _ := doJudge(t, srv, JudgeRequest{
+		Repo: "acme/storefront", PR: 1, HeadSHA: "sha1",
+		InstallationToken: "tok-xyz789",
+		Hunks:             []Hunk{sampleHunk()},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := d.checkRunAuth.Load(); got != "Bearer tok-xyz789" {
+		t.Fatalf("expected Authorization header %q, got %q", "Bearer tok-xyz789", got)
+	}
+
+	// Different head_sha avoids the per-request cache from the previous call.
+	rec2, _ := doJudge(t, srv, JudgeRequest{
+		Repo: "acme/storefront", PR: 1, HeadSHA: "sha1-no-token",
+		Hunks: []Hunk{sampleHunk()},
+	})
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+	if got := d.checkRunAuth.Load(); got != "" {
+		t.Fatalf("expected no Authorization header when installation_token is empty, got %q", got)
 	}
 }
 

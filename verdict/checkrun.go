@@ -20,8 +20,12 @@ func newCheckRunClient(baseURL string, httpClient *http.Client) *checkRunClient 
 }
 
 // Post creates a check run named "Chesterton" with the given conclusion and
-// markdown summary. Returns the created row's id.
-func (c *checkRunClient) Post(ctx context.Context, repo, headSHA, conclusion, summary string) (int64, error) {
+// markdown summary. When installationToken is non-empty, the request carries
+// `Authorization: Bearer <installationToken>` (docs/contracts.md "mocks —
+// GitHub API emulation": "Real mode: gateway/verdict send `Authorization:
+// Bearer $GITHUB_TOKEN`"); when empty (mock mode), no Authorization header is
+// sent. Returns the created row's id.
+func (c *checkRunClient) Post(ctx context.Context, repo, headSHA, conclusion, summary, installationToken string) (int64, error) {
 	body := checkRunRequest{
 		Name:       "Chesterton",
 		HeadSHA:    headSHA,
@@ -44,6 +48,9 @@ func (c *checkRunClient) Post(ctx context.Context, repo, headSHA, conclusion, su
 		return 0, fmt.Errorf("checkrun: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if installationToken != "" {
+		req.Header.Set("Authorization", "Bearer "+installationToken)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
