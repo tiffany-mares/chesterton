@@ -1,0 +1,18 @@
+{
+  "tickets": [
+    {
+      "key": "ENG-212",
+      "title": "Cap payment retries at 3",
+      "description": "Payment retries are capped at 3 with backoff, after checkout started hammering the payments provider with unbounded retries during an incident.",
+      "status": "Done",
+      "url": "http://localhost:4100/linear/issue/ENG-212"
+    },
+    {
+      "key": "ENG-310",
+      "title": "Hold checkout timeout at 30s for provider slow periods",
+      "description": "Checkout's timeout is held at 30s to give the payments provider room during its slow periods.",
+      "status": "Done",
+      "url": "http://localhost:4100/linear/issue/ENG-310"
+    }
+  ]
+}

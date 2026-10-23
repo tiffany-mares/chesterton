@@ -1,0 +1,40 @@
+{
+  "prs": [
+    {
+      "number": 1,
+      "title": "Bump payment retry limit for a flaky provider",
+      "branch": "demo/retry-cap-removal",
+      "base": "main",
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "diff_file": "prs/1.diff",
+      "author": "Marcus"
+    },
+    {
+      "number": 2,
+      "title": "Refactor: rename local variable in stock describe() for clarity",
+      "branch": "demo/harmless-refactor",
+      "base": "main",
+      "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "diff_file": "prs/2.diff",
+      "author": "Sam"
+    },
+    {
+      "number": 3,
+      "title": "Reduce checkout timeout for faster failover",
+      "branch": "demo/timeout-change",
+      "base": "main",
+      "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "diff_file": "prs/3.diff",
+      "author": "Jo"
+    },
+    {
+      "number": 101,
+      "title": "Cap payment retries (fixes ENG-212)",
+      "branch": "fix/retry-cap",
+      "base": "main",
+      "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "diff_file": "prs/101.diff",
+      "author": "Marcus"
+    }
+  ]
+}

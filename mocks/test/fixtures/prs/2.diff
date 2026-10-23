@@ -1,0 +1,12 @@
+diff --git a/services/inventory/stock.py b/services/inventory/stock.py
+index 20310b7..67fca4b 100644
+--- a/services/inventory/stock.py
++++ b/services/inventory/stock.py
+@@ -29,5 +29,5 @@ class Stock:
+ 
+ 
+ def describe(stock):
+-    label = "%s: %d available" % (stock.sku, stock.available)
+-    return label
++    summary_text = "%s: %d available" % (stock.sku, stock.available)
++    return summary_text

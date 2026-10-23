@@ -1,0 +1,13 @@
+diff --git a/services/payments/client.py b/services/payments/client.py
+index 2b51a54..d30b0ea 100644
+--- a/services/payments/client.py
++++ b/services/payments/client.py
+@@ -2,7 +2,7 @@
+ 
+ import time
+ 
+-# TODO(seed): fence retry-cap pending fix (ENG-212)
++MAX_RETRIES = 3
+ # TODO(seed): fence payments-backoff-seconds pending fix (ENG-213)
+ # TODO(seed): fence payments-timeout-seconds pending fix (ENG-214)
+ # TODO(seed): fence payments-default-currency pending fix (ENG-205)

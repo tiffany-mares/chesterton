@@ -1,0 +1,13 @@
+diff --git a/services/checkout/api.py b/services/checkout/api.py
+index 98be817..00cbdd7 100644
+--- a/services/checkout/api.py
++++ b/services/checkout/api.py
+@@ -5,7 +5,7 @@ from services.payments import client as payments_client
+ SEEN_IDEMPOTENCY_KEYS = set()
+ 
+ # timeout is 30s, see ENG-310
+-CHECKOUT_TIMEOUT_SECONDS = 30
++CHECKOUT_TIMEOUT_SECONDS = 5
+ 
+ 
+ def checkout(cart, idempotency_key, shipping_address, currency="USD"):

@@ -1,0 +1,70 @@
+{
+  "repo": "acme/storefront",
+  "fences": [
+    {
+      "id": "retry-cap",
+      "file": "services/payments/client.py",
+      "line_start": 5,
+      "line_end": 5,
+      "code": "MAX_RETRIES = 3",
+      "summary": "Payment retries are capped at 3 with backoff, after checkout started hammering the payments provider with unbounded retries during an incident.",
+      "citations": [
+        {
+          "type": "slack",
+          "url": "http://localhost:4100/slack/archives/oncall/p1700000000",
+          "title": "#oncall: retry cap"
+        },
+        {
+          "type": "linear",
+          "url": "http://localhost:4100/linear/issue/ENG-212",
+          "title": "ENG-212: Cap payment retries at 3"
+        },
+        {
+          "type": "pr",
+          "url": "http://localhost:4100/github/acme/storefront/pull/101/files",
+          "title": "Cap payment retries (fixes ENG-212)"
+        }
+      ]
+    },
+    {
+      "id": "checkout-timeout-comment",
+      "file": "services/checkout/api.py",
+      "line_start": 7,
+      "line_end": 7,
+      "code": "# timeout is 30s, see ENG-310",
+      "summary": "Checkout's timeout is held at 30s to give the payments provider room during its slow periods; see ENG-310.",
+      "citations": [
+        {
+          "type": "slack",
+          "url": "http://localhost:4100/slack/archives/oncall/p1700000006",
+          "title": "#oncall: checkout timeout"
+        },
+        {
+          "type": "linear",
+          "url": "http://localhost:4100/linear/issue/ENG-310",
+          "title": "ENG-310: Hold checkout timeout at 30s for provider slow periods"
+        },
+        {
+          "type": "pr",
+          "url": "http://localhost:4100/github/acme/storefront/pull/110/files",
+          "title": "Hold checkout timeout at 30s (fixes ENG-310)"
+        }
+      ]
+    },
+    {
+      "id": "oversell-guard",
+      "file": "services/inventory/stock.py",
+      "line_start": 16,
+      "line_end": 16,
+      "code": "if quantity > self.available:",
+      "summary": "Stock reservations are rejected once the requested quantity exceeds what's available, after a flash sale oversold several limited SKUs.",
+      "citations": [
+        {
+          "type": "slack",
+          "url": "http://localhost:4100/slack/archives/oncall/p1700000004",
+          "title": "#oncall: oversell guard"
+        }
+      ]
+    }
+  ]
+}
