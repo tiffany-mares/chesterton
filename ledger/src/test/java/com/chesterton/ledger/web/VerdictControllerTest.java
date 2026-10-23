@@ -111,4 +111,55 @@ class VerdictControllerTest {
                 .andExpect(jsonPath("$.length()").value(0));
     }
 
+    @Test
+    void listsAllVerdictsForRepoWhenPrIsOmitted() throws Exception {
+        // Two verdicts, same repo, different pr/hunk_hash (hunk_hash is part of the upsert key,
+        // so distinct hashes avoid colliding with each other).
+        mockMvc.perform(post("/verdicts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "repo": "acme/storefront",
+                                  "pr": 1,
+                                  "head_sha": "abc123",
+                                  "hunk_hash": "hash-pr-1",
+                                  "decision_id": null,
+                                  "verdict": "YES",
+                                  "payload": {"id": 0, "repo": "acme/storefront", "pr": 1,
+                                    "head_sha": "abc123", "file": "a.py", "line": 1,
+                                    "kind": "contradiction", "verdict": "YES", "reason": "r1",
+                                    "citations": [], "hunk_hash": "hash-pr-1", "status": "open"}
+                                }
+                                """))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/verdicts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "repo": "acme/storefront",
+                                  "pr": 2,
+                                  "head_sha": "def456",
+                                  "hunk_hash": "hash-pr-2",
+                                  "decision_id": null,
+                                  "verdict": "NO",
+                                  "payload": {"id": 0, "repo": "acme/storefront", "pr": 2,
+                                    "head_sha": "def456", "file": "b.py", "line": 5,
+                                    "kind": "contradiction", "verdict": "NO", "reason": "r2",
+                                    "citations": [], "hunk_hash": "hash-pr-2", "status": "open"}
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        // pr omitted -> both rows for the repo, regardless of pr.
+        mockMvc.perform(get("/verdicts").param("repo", "acme/storefront"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2));
+
+        // Existing behavior unchanged: pr supplied still filters to that pr only.
+        mockMvc.perform(get("/verdicts").param("repo", "acme/storefront").param("pr", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].pr").value(1));
+    }
+
 }
