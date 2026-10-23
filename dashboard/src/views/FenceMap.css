@@ -1,0 +1,86 @@
+.fence-map {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+.fence-map-canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fence-map-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.fence-tile {
+  cursor: pointer;
+}
+
+.fence-tile rect {
+  stroke: var(--bg);
+  stroke-width: 1.5;
+}
+
+.fence-tile.is-selected rect {
+  stroke: #4a90d9;
+  stroke-width: 2.5;
+}
+
+.fence-tile text {
+  font-size: 11px;
+  pointer-events: none;
+  dominant-baseline: hanging;
+}
+
+.fence-map-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.fence-map-legend .ramp {
+  width: 120px;
+  height: 10px;
+  border-radius: 2px;
+  background: linear-gradient(to right, rgb(232, 232, 232), rgb(40, 40, 40));
+  border: 1px solid var(--border);
+}
+
+.side-panel {
+  flex: 0 0 20rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.9rem;
+  background: var(--surface);
+  min-height: 8rem;
+}
+
+.side-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  word-break: break-all;
+}
+
+.side-panel .fence-entry {
+  border-top: 1px solid var(--border);
+  padding: 0.6rem 0;
+}
+
+.side-panel .fence-entry:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.side-panel .fence-summary {
+  font-size: 0.85rem;
+  margin: 0 0 0.3rem;
+}
