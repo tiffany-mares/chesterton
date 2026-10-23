@@ -22,6 +22,20 @@ interface CommentBody {
   side: string;
 }
 
+type StoredComment = CommentBody & { id: number; repo: string; pr: number };
+
+/**
+ * Review-comment storage, shared between the GitHub API router (which
+ * writes via POST /pulls/:n/comments) and the pages router (which reads it
+ * to render stored comments -- including plaque suggestions -- on the PR
+ * files page). Created fresh per createGithubRouter() call so state stays
+ * isolated per app instance, same as the check-runs store below.
+ */
+interface CommentStore {
+  items: StoredComment[];
+  nextId: number;
+}
+
 export interface GithubRouterOptions {
   fixtures: Fixtures;
   gatewayUrl: string;
@@ -35,14 +49,12 @@ function findPr(fixtures: Fixtures, number: number) {
 }
 
 /** `GET/POST /repos/...`, `GET/POST /pulls/.../comments`, `POST /check-runs`, etc. */
-function createGithubApiRouter(fixtures: Fixtures): Router {
+function createGithubApiRouter(fixtures: Fixtures, commentStore: CommentStore): Router {
   const router = Router();
 
-  // In-memory stores, scoped to this router instance (fresh per createApp() call).
+  // In-memory store, scoped to this router instance (fresh per createApp() call).
   const checkRuns: Array<CheckRunBody & { id: number; repo: string }> = [];
   let nextCheckRunId = 1;
-  const comments: Array<CommentBody & { id: number; repo: string; pr: number }> = [];
-  let nextCommentId = 1;
 
   router.get("/repos/:owner/:repo/pulls/:n", (req: Request, res: Response) => {
     const number = Number(req.params.n);
@@ -99,8 +111,8 @@ function createGithubApiRouter(fixtures: Fixtures): Router {
       res.status(400).json({ message: "expected { body, commit_id, path, line, side }" });
       return;
     }
-    const record = {
-      id: nextCommentId++,
+    const record: StoredComment = {
+      id: commentStore.nextId++,
       repo: `${req.params.owner}/${req.params.repo}`,
       pr: Number(req.params.n),
       body: body.body,
@@ -109,14 +121,14 @@ function createGithubApiRouter(fixtures: Fixtures): Router {
       line: body.line ?? 0,
       side: body.side ?? "RIGHT",
     };
-    comments.push(record);
+    commentStore.items.push(record);
     res.status(201).json(record);
   });
 
   router.get("/repos/:owner/:repo/pulls/:n/comments", (req: Request, res: Response) => {
     const repo = `${req.params.owner}/${req.params.repo}`;
     const n = Number(req.params.n);
-    res.json(comments.filter((c) => c.repo === repo && c.pr === n));
+    res.json(commentStore.items.filter((c) => c.repo === repo && c.pr === n));
   });
 
   return router;
@@ -180,7 +192,7 @@ function safeJson(text: string): unknown {
 }
 
 /** `GET /:owner/:repo/pull/:n/files` — renders the PR diff as a GitHub-like HTML page. */
-function createPagesRouter(fixtures: Fixtures): Router {
+function createPagesRouter(fixtures: Fixtures, commentStore: CommentStore): Router {
   const router = Router();
 
   router.get("/:owner/:repo/pull/:n/files", (req: Request, res: Response) => {
@@ -191,11 +203,14 @@ function createPagesRouter(fixtures: Fixtures): Router {
       return;
     }
     const diffText = readPrDiff(fixtures, pr.diff_file);
+    const repo = `${req.params.owner}/${req.params.repo}`;
+    const comments = commentStore.items.filter((c) => c.repo === repo && c.pr === number);
     const html = renderPrFilesPage({
       owner: req.params.owner,
       repo: req.params.repo,
       pr,
       diffText,
+      comments,
     });
     res.type("html").send(html);
   });
@@ -206,8 +221,12 @@ function createPagesRouter(fixtures: Fixtures): Router {
 /** Mounts the full `/github` surface: `/api/*`, `/trigger/pr`, and `/:owner/:repo/pull/:n/files`. */
 export function createGithubRouter(opts: GithubRouterOptions): Router {
   const router = Router();
-  router.use("/api", createGithubApiRouter(opts.fixtures));
+  // Shared so a plaque comment POSTed via /api/.../comments shows up when
+  // the PR files page is re-rendered (controller ruling, final-review fix
+  // wave: beat 6 of the demo now ends on this suggestion actually appearing).
+  const commentStore: CommentStore = { items: [], nextId: 1 };
+  router.use("/api", createGithubApiRouter(opts.fixtures, commentStore));
   router.use("/", createTriggerRouter(opts));
-  router.use("/", createPagesRouter(opts.fixtures));
+  router.use("/", createPagesRouter(opts.fixtures, commentStore));
   return router;
 }

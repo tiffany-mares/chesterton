@@ -35,14 +35,9 @@ export function getStats(repo: string): Promise<Stats> {
 }
 
 /**
- * NOTE (flagged to controller, per task-10-brief.md): docs/contracts.md does
- * NOT list a `GET /decisions` proxy under the gateway's API — only the
- * ledger exposes `GET /decisions?repo=&file=` directly. This client function
- * calls the gateway anyway (GET {GATEWAY_URL}/decisions?repo=&file=) per the
- * brief's instruction to build against the contract's shapes and let the
- * controller add the missing gateway proxy. Until that proxy exists this
- * call will 404 against a real gateway; the FenceMap side panel handles that
- * failure gracefully (empty citation list + inline error note).
+ * GET {GATEWAY_URL}/decisions?repo=&file= — proxies the ledger's
+ * GET /decisions?repo=&file= (docs/contracts.md "gateway (Node)"). Used by
+ * the FenceMap side panel to list a file's fences and citations.
  */
 export function getDecisions(repo: string, file: string): Promise<Decision[]> {
   const qs = new URLSearchParams({ repo, file });

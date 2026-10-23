@@ -15,13 +15,52 @@ const STYLE = `
   td.blob-code { padding: 0 10px; white-space: pre; }
   tr.diff-line-add td.blob-code, tr.diff-line-add td.blob-num-addition { background: #e6ffec; }
   tr.diff-line-del td.blob-code, tr.diff-line-del td.blob-num-deletion { background: #ffebe9; }
+  .review-comments { padding: 10px 12px; border-top: 1px solid #d0d7de; background: #f6f8fa; }
+  .review-comment { margin-bottom: 8px; }
+  .review-comment:last-child { margin-bottom: 0; }
+  .review-comment p { margin: 0 0 6px; font-size: 13px; }
+  .review-comment pre.suggestion { margin: 0; background: #fff; border: 1px solid #d0d7de; border-radius: 4px; padding: 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; overflow-x: auto; }
 `;
+
+/** A review comment stored by the mock GitHub API, relevant to one file. */
+export interface StoredReviewComment {
+  path: string;
+  line: number;
+  body: string;
+}
 
 export interface RenderPrFilesPageOptions {
   owner: string;
   repo: string;
   pr: PrEntry;
   diffText: string;
+  /** Stored review comments for this PR (across all files); filtered by path per file block. */
+  comments?: StoredReviewComment[];
+}
+
+const SUGGESTION_BLOCK_RE = /```suggestion\n([\s\S]*?)```/;
+
+/**
+ * Renders one stored review comment's body. Per controller ruling
+ * (final-review fix wave), a ```suggestion fenced block is rendered as a
+ * simple <pre> (not a live diff); any text before/after the fence is shown
+ * as plain paragraphs. Minimal styling.
+ */
+function renderComment(comment: StoredReviewComment): string {
+  const match = SUGGESTION_BLOCK_RE.exec(comment.body);
+  if (!match) {
+    return `<div class="review-comment"><p>${escapeHtml(comment.body)}</p></div>`;
+  }
+
+  const before = comment.body.slice(0, match.index).trim();
+  const after = comment.body.slice(match.index + match[0].length).trim();
+  const suggestion = match[1].replace(/\n$/, "");
+
+  return `<div class="review-comment">
+  ${before ? `<p>${escapeHtml(before)}</p>` : ""}
+  <pre class="suggestion">${escapeHtml(suggestion)}</pre>
+  ${after ? `<p>${escapeHtml(after)}</p>` : ""}
+</div>`;
 }
 
 function lineMarker(line: DiffLine): string {
@@ -47,20 +86,24 @@ function renderRow(line: DiffLine): string {
 }
 
 export function renderPrFilesPage(opts: RenderPrFilesPageOptions): string {
-  const { owner, repo, pr, diffText } = opts;
+  const { owner, repo, pr, diffText, comments = [] } = opts;
   const files = parseUnifiedDiff(diffText);
   const fullName = `${owner}/${repo}`;
 
   const fileBlocks = files
     .map((file) => {
       const rows = file.hunks.flatMap((h) => h.lines).map(renderRow).join("\n");
+      const fileComments = comments.filter((c) => c.path === file.path).sort((a, b) => a.line - b.line);
+      const commentsHtml = fileComments.length
+        ? `\n  <div class="review-comments">\n${fileComments.map(renderComment).join("\n")}\n  </div>`
+        : "";
       return `<div class="file" data-tagsearch-path="${escapeHtml(file.path)}">
   <div class="file-header" data-path="${escapeHtml(file.path)}">${escapeHtml(file.path)}</div>
   <table class="diff">
     <tbody>
 ${rows}
     </tbody>
-  </table>
+  </table>${commentsHtml}
 </div>`;
     })
     .join("\n");

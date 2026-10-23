@@ -43,6 +43,7 @@ describe("extractComments", () => {
         line: 7,
         text: "# timeout is 30s, see ENG-310",
         hunk_hash: "abcdef0123456789",
+        hunk: hunks[0],
       },
     ]);
   });
@@ -71,7 +72,7 @@ describe("extractComments", () => {
       },
     ];
     const comments = extractComments(diff, hunks);
-    expect(comments).toEqual([{ file: "a.js", line: 1, text: "// retry cap", hunk_hash: "hash1" }]);
+    expect(comments).toEqual([{ file: "a.js", line: 1, text: "// retry cap", hunk_hash: "hash1", hunk: hunks[0] }]);
   });
 
   it("ignores context lines that are not comments", () => {
@@ -128,6 +129,6 @@ describe("extractComments", () => {
     ];
     const comments = extractComments(diff, hunks);
     expect(comments).toHaveLength(1);
-    expect(comments[0]).toEqual({ file: "a.py", line: 1, text: "# shared note", hunk_hash: "hashA" });
+    expect(comments[0]).toEqual({ file: "a.py", line: 1, text: "# shared note", hunk_hash: "hashA", hunk: hunks[0] });
   });
 });

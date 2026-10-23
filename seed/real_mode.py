@@ -73,9 +73,15 @@ def create_linear_ticket(title: str, description: str) -> str | None:
     """REAL MODE (untested): create a real Linear issue via its GraphQL API.
 
     Returns the issue URL, or None if LINEAR_API_KEY is unset or anything
-    about the call fails. Note: this creates the issue in whatever team is
-    the API key's default; adjust the mutation's `teamId` if you need a
-    specific team.
+    about the call fails. Note: Linear's `issueCreate` mutation REQUIRES a
+    `teamId` input (there is no "API key's default team") -- the mutation
+    below does not supply one, so this call will fail against the real API
+    as written. That's fine for now: this path is untested and not on the
+    demo's critical path (CHESTERTON_MODE=mock never calls it), and the
+    try/except below makes the failure fail-safe (logs and returns None, the
+    caller falls back to the mock URL). Add `teamId` to the mutation's
+    `input` (and thread a team id through as a parameter) before relying on
+    this in real mode.
     """
     token = os.environ.get("LINEAR_API_KEY")
     if not token:

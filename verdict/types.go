@@ -57,11 +57,20 @@ type Flag struct {
 }
 
 // Comment is an optional entry in JudgeRequest for stale-comment checks.
+//
+// Hunk carries the adjacent Hunk object INLINE. Gateway extracts comments
+// against ALL hunks the analyzer produced, but only forwards hunks scoring
+// >= 0.5 in JudgeRequest.Hunks -- a comment next to a hunk that scored below
+// that threshold would otherwise have no hunk context here. processComment
+// prefers this inline Hunk and falls back to a HunkHash lookup against
+// JudgeRequest.Hunks only for backward compatibility (docs/contracts.md
+// "verdict (Go)" /judge request).
 type Comment struct {
 	File     string `json:"file"`
 	Line     int    `json:"line"`
 	Text     string `json:"text"`
 	HunkHash string `json:"hunk_hash"`
+	Hunk     *Hunk  `json:"hunk,omitempty"`
 }
 
 // JudgeRequest is the POST /judge body.

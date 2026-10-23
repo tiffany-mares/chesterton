@@ -46,12 +46,22 @@ export interface Flag {
   status: FlagStatus;
 }
 
-/** Code comment adjacent to a changed hunk, extracted for stale-comment checks. */
+/**
+ * Code comment adjacent to a changed hunk, extracted for stale-comment checks.
+ *
+ * `hunk` carries the adjacent Hunk object INLINE (not just its hash) so that
+ * verdict can run the stale check even when that hunk scored below the
+ * triage threshold and was therefore filtered out of the `hunks[]` sent
+ * alongside this comment (docs/contracts.md "verdict (Go)" /judge request).
+ * `null` only in the defensive case where no hunk exists in the file at all
+ * (shouldn't happen for diffs the analyzer actually parsed).
+ */
 export interface CommentCandidate {
   file: string;
   line: number;
   text: string;
   hunk_hash: string;
+  hunk: Hunk | null;
 }
 
 export interface HunkScore {

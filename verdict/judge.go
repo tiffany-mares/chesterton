@@ -159,13 +159,22 @@ func (s *Server) processHunk(ctx context.Context, repo string, pr int, headSHA s
 }
 
 // processComment asks Estelle's /v1/stale for one comment and, if stale,
-// returns a stale_comment Flag pinned at comment.Line. Comments whose
-// hunk_hash doesn't match any hunk in the request are skipped (we have no
-// hunk context to send Estelle).
+// returns a stale_comment Flag pinned at comment.Line. The adjacent hunk is
+// taken from c.Hunk (embedded inline by gateway, per docs/contracts.md
+// "verdict (Go)" /judge request) when present; this is what lets the stale
+// check still run for a comment whose adjacent hunk scored below the triage
+// threshold and was therefore absent from hunkByHash. The hunkByHash lookup
+// is kept only as a fallback for callers/tests that don't set c.Hunk.
+// Comments that resolve to no hunk at all (neither inline nor by hash) are
+// skipped -- we have no hunk context to send Estelle.
 func (s *Server) processComment(ctx context.Context, repo string, pr int, headSHA string, c Comment, hunkByHash map[string]Hunk) (*Flag, error) {
-	hunk, ok := hunkByHash[c.HunkHash]
-	if !ok {
-		log.Printf("judge: comment at %s:%d references unknown hunk_hash %q; skipping stale check", c.File, c.Line, c.HunkHash)
+	var hunk Hunk
+	if c.Hunk != nil {
+		hunk = *c.Hunk
+	} else if h, ok := hunkByHash[c.HunkHash]; ok {
+		hunk = h
+	} else {
+		log.Printf("judge: comment at %s:%d references unknown hunk_hash %q and carries no inline hunk; skipping stale check", c.File, c.Line, c.HunkHash)
 		return nil, nil
 	}
 

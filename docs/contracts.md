@@ -161,9 +161,17 @@ Rule reasons vocabulary: `removed_conditional`, `changed_numeric_constant`, `rem
 Request:
 ```json
 {"repo": "acme/storefront", "pr": 1, "head_sha": "...", "installation_token": "",
- "hunks": [Hunk, ...], "comments": [{"file": ..., "line": 9, "text": "# retry cap is 3", "hunk_hash": "..."}]}
+ "hunks": [Hunk, ...],
+ "comments": [{"file": ..., "line": 9, "text": "# retry cap is 3", "hunk_hash": "...", "hunk": Hunk}]}
 ```
 `comments` (optional) = code comments adjacent to changed hunks, for stale-comment checks.
+Each comment's `hunk` is its adjacent Hunk object, embedded INLINE — not merely looked up by
+`hunk_hash` against the request's `hunks[]`. Gateway extracts comments against ALL hunks the
+analyzer produced, but only forwards hunks scoring `>= 0.5` in `hunks[]` (see triage above); without
+the inline `hunk`, a stale-comment candidate whose adjacent hunk scored below that threshold would
+have no hunk context in `/judge` and its stale check would be silently skipped. Verdict runs the
+stale check using the inline `hunk` when present, falling back to a `hunk_hash` lookup against
+`hunks[]` only for backward compatibility.
 Response: `{"flags": [Flag, ...], "check_run_id": 12}`
 Behavior: per hunk (bounded concurrency 4) ask Estelle `/v1/ask`; apply strictness rules; for each
 comment ask `/v1/stale`. Cache key `repo + ":" + head_sha + ":" + hunk_hash` in Redis (fallback:
@@ -177,7 +185,7 @@ summary is markdown listing each flag with citations.
 - `GET /decisions?repo=&file=` → list
 - `POST /verdicts` `{repo, pr, head_sha, hunk_hash, decision_id|null, verdict, payload}` — upsert on `(repo, head_sha, hunk_hash)`; `payload` is the full Flag JSON → returns row with `id`
 - `GET /verdicts?repo=&pr=` → `[{id, ..., payload}]`; `pr` optional — omitted returns all rows for the repo
-- `POST /overrides` `{verdict_id, reason, author}` → row; side effect: inserts a new `decision` (source `override`) anchored to the verdict's file/lines so future PRs cite it
+- `POST /overrides` `{verdict_id, reason, author}` → row; side effect: inserts a new `decision` (source `override`) anchored to the verdict's file/lines so future PRs cite it. (Note: in mock mode the override decision is recorded in the ledger but NOT fed back into mock Estelle's knowledge base — override-informed verdicts are future work.)
 - `GET /overrides?repo=` → list joined with verdict info
 - `GET /fences/by-file?repo=` → `[{file, fence_count, loc}]` (`loc` = lines of code if known, else 0)
 - `GET /stats?repo=` → `{verdicts_total, flags_total, overrides_total, false_positive_rate}` (fp rate = overrides/flags, 0 if no flags)

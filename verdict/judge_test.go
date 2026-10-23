@@ -424,6 +424,56 @@ func TestHandleJudge_StaleCommentAdjacentToItsHunk_DoesNotCollideInLedger(t *tes
 	}
 }
 
+// TestHandleJudge_StaleComment_InlineHunkWithNoMatchingRequestHunk_StillChecked
+// is the final-review fix for a dropped-flag bug: gateway extracts comments
+// against ALL hunks the analyzer produced, but only forwards hunks scoring
+// >= 0.5 in JudgeRequest.Hunks. Before this fix, processComment looked up a
+// comment's hunk solely via hunkByHash (built from JudgeRequest.Hunks), so a
+// comment adjacent to a low-scoring (filtered-out) hunk had no hunk context
+// and its stale check was silently skipped. Embedding the hunk inline on the
+// Comment (Comment.Hunk) fixes this -- assert the stale check still runs
+// when the request's Hunks[] does NOT contain a hunk matching the comment's
+// hunk_hash, as long as the comment carries its own inline Hunk.
+func TestHandleJudge_StaleComment_InlineHunkWithNoMatchingRequestHunk_StillChecked(t *testing.T) {
+	srv, d := newTestServer(t, false)
+	d.staleResp = staleResponse{Stale: true, Reason: "comment references removed value", Citations: []Citation{{Type: "linear", URL: "http://x", Title: "ENG-310"}}}
+	defer d.close()
+
+	inlineHunk := Hunk{
+		File: "services/checkout/api.py", OldStart: 30, OldEnd: 30, NewStart: 30, NewEnd: 30,
+		OldLines: []string{"CHECKOUT_TIMEOUT_SECONDS = 30"}, NewLines: []string{"CHECKOUT_TIMEOUT_SECONDS = 5"},
+		HunkHash: "hh-filtered-out",
+	}
+
+	rec, resp := doJudge(t, srv, JudgeRequest{
+		Repo: "acme/storefront", PR: 3, HeadSHA: "sha-inline-hunk",
+		// Hunks[] is empty: the adjacent hunk scored below the triage
+		// threshold and was filtered out before reaching /judge.
+		Hunks: nil,
+		Comments: []Comment{{
+			File: "services/checkout/api.py", Line: 29, Text: "# timeout is 30s, see ENG-310",
+			HunkHash: "hh-filtered-out", Hunk: &inlineHunk,
+		}},
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if d.staleCalls.Load() != 1 {
+		t.Fatalf("expected the stale check to run using the comment's inline hunk, got %d /v1/stale calls", d.staleCalls.Load())
+	}
+	if len(resp.Flags) != 1 {
+		t.Fatalf("expected exactly 1 stale_comment flag, got %d: %+v", len(resp.Flags), resp.Flags)
+	}
+	f := resp.Flags[0]
+	if f.Kind != "stale_comment" {
+		t.Fatalf("expected kind stale_comment, got %q", f.Kind)
+	}
+	if f.Line != 29 {
+		t.Fatalf("expected flag line 29, got %d", f.Line)
+	}
+}
+
 func TestHandleJudge_RejectsMissingRepo(t *testing.T) {
 	srv, d := newTestServer(t, false)
 	defer d.close()

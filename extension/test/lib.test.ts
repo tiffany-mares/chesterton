@@ -7,6 +7,7 @@ import {
   buildCardElement,
   injectFlagCard,
   debounce,
+  markPinned,
   type Flag,
 } from "../src/lib.js";
 import { PAYMENTS_FILE, paymentsFileLines, renderFileBlock, renderPrPage } from "./fixtures.js";
@@ -219,6 +220,25 @@ describe("injectFlagCard", () => {
     const card = document.querySelector('[data-chesterton-card-id="17"]') as HTMLElement;
     const wrapperTd = card.closest("td") as HTMLTableCellElement;
     expect(wrapperTd.colSpan).toBe(3);
+  });
+});
+
+describe("markPinned", () => {
+  it("flips a button's label to Pinned ✓ and disables it", () => {
+    const card = buildCardElement(document, makeFlag());
+    const pinBtn = card.querySelector('button[data-chesterton-action="pin"]') as HTMLButtonElement;
+    expect(pinBtn.disabled).toBe(false);
+
+    markPinned(pinBtn);
+
+    expect(pinBtn.textContent).toBe("Pinned ✓");
+    expect(pinBtn.disabled).toBe(true);
+  });
+
+  it("sets textContent even on a non-button element without throwing", () => {
+    const div = document.createElement("div");
+    expect(() => markPinned(div)).not.toThrow();
+    expect(div.textContent).toBe("Pinned ✓");
   });
 });
 

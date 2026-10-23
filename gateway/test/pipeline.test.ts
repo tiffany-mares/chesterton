@@ -177,4 +177,66 @@ describe("runPipeline", () => {
     const result = await runPipeline({ repo: "acme/storefront", pr: 3, headSha: "sha789" }, baseDeps);
     expect(result.flags).toEqual([]);
   });
+
+  it("includes a stale-comment candidate's inline hunk even when that hunk is filtered out for scoring below 0.5", async () => {
+    // Controller ruling (final-review fix wave): a comment's adjacent hunk is
+    // extracted against ALL hunks, but only hunks scoring >= 0.5 are sent in
+    // `hunks[]` to verdict. Without embedding the hunk INLINE on the
+    // comment, verdict's processComment has no hunk context for a comment
+    // whose adjacent hunk was filtered out, and silently skips its stale
+    // check. This reproduces that scenario end to end through the pipeline.
+    const TIMEOUT_DIFF =
+      "diff --git a/services/checkout/api.py b/services/checkout/api.py\n" +
+      "index 98be817..00cbdd7 100644\n" +
+      "--- a/services/checkout/api.py\n" +
+      "+++ b/services/checkout/api.py\n" +
+      "@@ -5,7 +5,7 @@ from services.payments import client as payments_client\n" +
+      " SEEN_IDEMPOTENCY_KEYS = set()\n" +
+      " \n" +
+      " # timeout is 30s, see ENG-310\n" +
+      "-CHECKOUT_TIMEOUT_SECONDS = 30\n" +
+      "+CHECKOUT_TIMEOUT_SECONDS = 5\n" +
+      " \n" +
+      " \n" +
+      ' def checkout(cart, idempotency_key, shipping_address, currency="USD"):\n';
+
+    const HUNK_TIMEOUT_LOW: Hunk = {
+      file: "services/checkout/api.py",
+      old_start: 8,
+      old_end: 8,
+      new_start: 8,
+      new_end: 8,
+      old_lines: ["CHECKOUT_TIMEOUT_SECONDS = 30"],
+      new_lines: ["CHECKOUT_TIMEOUT_SECONDS = 5"],
+      symbol: "",
+      hunk_hash: "hh-timeout-low",
+    };
+
+    const githubPool = mockAgent.get("http://github.test");
+    githubPool.intercept({ path: "/repos/acme/storefront/pulls/4", method: "GET" }).reply(200, TIMEOUT_DIFF);
+    const analyzerPool = mockAgent.get("http://analyzer.test");
+    analyzerPool.intercept({ path: "/analyze", method: "POST" }).reply(200, { hunks: [HUNK_TIMEOUT_LOW] });
+    const triagePool = mockAgent.get("http://triage.test");
+    triagePool
+      .intercept({ path: "/score", method: "POST" })
+      .reply(200, { scores: [{ hunk_hash: "hh-timeout-low", score: 0.1, reasons: [] }] });
+    const verdictPool = mockAgent.get("http://verdict.test");
+    verdictPool
+      .intercept({ path: "/judge", method: "POST" })
+      .reply(200, (opts) => {
+        const body = JSON.parse(String(opts.body));
+        // The hunk itself was filtered out of hunks[] (score 0.1 < 0.5)...
+        expect(body.hunks).toEqual([]);
+        // ...but the adjacent stale-comment candidate still reaches verdict,
+        // carrying that hunk INLINE so verdict can run the stale check
+        // regardless of the triage filter outcome.
+        expect(body.comments).toHaveLength(1);
+        expect(body.comments[0].hunk_hash).toBe("hh-timeout-low");
+        expect(body.comments[0].hunk).toEqual(HUNK_TIMEOUT_LOW);
+        return { flags: [], check_run_id: 101 };
+      });
+
+    const result = await runPipeline({ repo: "acme/storefront", pr: 4, headSha: "shaTimeout" }, baseDeps);
+    expect(result.flags).toEqual([]);
+  });
 });

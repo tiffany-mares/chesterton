@@ -4,7 +4,7 @@
 // beside each flagged line. Re-scans (debounced 500ms) on DOM mutation to survive
 // GitHub's PJAX navigation, which swaps content without a full page load.
 
-import { debounce, injectFlagCard, parsePrUrl, type Flag, type PrLocation } from "./lib.js";
+import { debounce, injectFlagCard, markPinned, parsePrUrl, type Flag, type PrLocation } from "./lib.js";
 import { createOverride, dismissFlag, fetchVerdicts, getGatewayUrl, pinReason } from "./api.js";
 
 let currentFlags: Map<number, Flag> = new Map();
@@ -44,7 +44,7 @@ function removeCardForFlag(flagId: number): void {
   (row ?? card).remove();
 }
 
-async function handleAction(action: string, flagId: number): Promise<void> {
+async function handleAction(action: string, flagId: number, button: HTMLElement | null): Promise<void> {
   const flag = currentFlags.get(flagId);
   if (!flag || !currentContext) return;
 
@@ -73,6 +73,7 @@ async function handleAction(action: string, flagId: number): Promise<void> {
   if (action === "pin") {
     try {
       await pinReason(gatewayUrlCache, `${currentContext.owner}/${currentContext.repo}`, currentContext.pr, flagId);
+      if (button) markPinned(button);
     } catch (err) {
       console.warn("[chesterton] pin reason failed", err);
     }
@@ -88,7 +89,7 @@ document.addEventListener("click", (event) => {
   const flagId = Number(button.dataset.chestertonFlagId);
   if (!action || Number.isNaN(flagId)) return;
 
-  void handleAction(action, flagId);
+  void handleAction(action, flagId, button);
 });
 
 const debouncedRescan = debounce(() => {

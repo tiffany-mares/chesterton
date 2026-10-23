@@ -41,6 +41,44 @@ describe("GET /github/:owner/:repo/pull/:n/files", () => {
     const res = await request(app()).get("/github/acme/storefront/pull/9999/files");
     expect(res.status).toBe(404);
   });
+
+  it("renders a stored review comment (e.g. a plaque suggestion) under the matching file", async () => {
+    const a = app();
+    await request(a)
+      .post("/github/api/repos/acme/storefront/pulls/1/comments")
+      .send({
+        body: "Chesterton fence plaque:\n```suggestion\n# Fence: MAX_RETRIES=3 — see ENG-212 (http://localhost:4100/linear/issue/ENG-212)\nMAX_RETRIES = 50\n```",
+        commit_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        path: "services/payments/client.py",
+        line: 5,
+        side: "RIGHT",
+      });
+
+    const res = await request(a).get("/github/acme/storefront/pull/1/files");
+    expect(res.status).toBe(200);
+    expect(res.text).toContain("review-comments");
+    expect(res.text).toContain("Chesterton fence plaque:");
+    expect(res.text).toContain("# Fence: MAX_RETRIES=3");
+    // the suggestion block is rendered as a plain <pre>, not a live diff.
+    expect(res.text).toMatch(/<pre class="suggestion">[\s\S]*MAX_RETRIES = 50[\s\S]*<\/pre>/);
+  });
+
+  it("does not render review comments for other PRs or other files", async () => {
+    const a = app();
+    await request(a)
+      .post("/github/api/repos/acme/storefront/pulls/1/comments")
+      .send({
+        body: "unrelated comment",
+        commit_id: "sha",
+        path: "services/other/file.py",
+        line: 1,
+        side: "RIGHT",
+      });
+
+    const res = await request(a).get("/github/acme/storefront/pull/1/files");
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain("unrelated comment");
+  });
 });
 
 describe("GET /slack/archives/:channel/p:ts", () => {

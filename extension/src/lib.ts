@@ -276,6 +276,20 @@ export function injectFlagCard(doc: Document, flag: Flag): InjectResult {
 }
 
 /**
+ * Marks a "Pin reason" button as successfully pinned: flips its label to
+ * "Pinned ✓" and disables it. Lightweight inline success feedback for a
+ * successful POST /plaque (controller ruling, final-review fix wave) --
+ * no revert path needed since a plaque, once posted, stays posted.
+ */
+export function markPinned(button: HTMLElement): void {
+  button.textContent = "Pinned ✓";
+  if (button instanceof HTMLButtonElement) {
+    button.disabled = true;
+  }
+  button.style.cursor = "default";
+}
+
+/**
  * Standard trailing-edge debounce: coalesces rapid calls into one call `wait`ms
  * after the last invocation. Used to debounce MutationObserver callbacks.
  */

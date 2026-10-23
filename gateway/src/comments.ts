@@ -13,6 +13,13 @@
  * clarification: "a comment belongs to the nearest hunk below it in the
  * same file"). Falls back to the nearest hunk above if none is below
  * (defensive; shouldn't happen for diffs the analyzer actually parsed).
+ *
+ * Controller ruling (final-review fix wave): the full adjacent Hunk object
+ * is embedded INLINE on the comment (not just its hash) so that verdict can
+ * still run the stale check for a comment whose adjacent hunk scored below
+ * the triage threshold and was filtered out of the `hunks[]` array sent to
+ * /judge. Extraction still runs against ALL hunks (not just the filtered
+ * ones) -- only the inline attachment is new.
  */
 
 import { parseFileDiffs, type DiffLine } from "./diffUtils.js";
@@ -28,7 +35,7 @@ function hunkPosition(h: Hunk): number {
   return h.new_start > 0 ? h.new_start : h.old_start;
 }
 
-function nearestHunkHash(hunks: Hunk[], file: string, line: number): string {
+function nearestHunk(hunks: Hunk[], file: string, line: number): Hunk | null {
   const inFile = hunks.filter((h) => h.file === file);
   let best: Hunk | null = null;
   let bestPos = Infinity;
@@ -39,7 +46,7 @@ function nearestHunkHash(hunks: Hunk[], file: string, line: number): string {
       best = h;
     }
   }
-  if (best) return best.hunk_hash;
+  if (best) return best;
 
   let bestAbove: Hunk | null = null;
   let bestAbovePos = -Infinity;
@@ -50,7 +57,7 @@ function nearestHunkHash(hunks: Hunk[], file: string, line: number): string {
       bestAbove = h;
     }
   }
-  return bestAbove?.hunk_hash ?? "";
+  return bestAbove;
 }
 
 export function extractComments(diffText: string, hunks: Hunk[]): CommentCandidate[] {
@@ -86,8 +93,12 @@ export function extractComments(diffText: string, hunks: Hunk[]): CommentCandida
     }
   }
 
-  return [...seen.values()].map((c) => ({
-    ...c,
-    hunk_hash: nearestHunkHash(hunks, c.file, c.line),
-  }));
+  return [...seen.values()].map((c) => {
+    const hunk = nearestHunk(hunks, c.file, c.line);
+    return {
+      ...c,
+      hunk_hash: hunk?.hunk_hash ?? "",
+      hunk,
+    };
+  });
 }

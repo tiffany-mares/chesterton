@@ -10,7 +10,9 @@
  *
  * Usage:
  *   node e2e/run.mjs                 # boot, assert, tear down, exit 0/1
- *   node e2e/run.mjs --keep-alive    # on PASS, leave the stack running
+ *   node e2e/run.mjs --keep-alive    # on PASS, also boot the dashboard
+ *                                    # (vite dev, port 4600) and leave the
+ *                                    # whole stack running for the demo
  *
  * Env:
  *   SKIP_LEDGER=1   # don't boot ledger; gateway relies on in-memory fallback
@@ -37,6 +39,14 @@ const URLS = {
   triage: "http://localhost:4500",
 };
 const PORTS = { gateway: 4000, mocks: 4100, analyzer: 4200, verdict: 4300, ledger: 4400, triage: 4500 };
+
+// The dashboard is deliberately NOT part of URLS/PORTS above: it's only
+// booted (and only preflight-checked) under --keep-alive, after assertions
+// pass -- it must never be part of the assertion phase or a non-keep-alive
+// run (scripts/print-tabs.mjs and the README demo script are the only other
+// things that know this URL).
+const DASHBOARD_URL = "http://localhost:4600";
+const DASHBOARD_PORT = 4600;
 
 // ---------------------------------------------------------------- utilities
 
@@ -232,6 +242,52 @@ async function waitForHealthz(name, url, timeoutMs) {
   return false;
 }
 
+/**
+ * Waits for a plain HTTP 200 on `url` -- for services with no /healthz
+ * (e.g. vite's dev server, which returns 200 HTML on `/`). A simple
+ * TCP-connect-and-fetch check is enough; there's no JSON body contract to
+ * validate like waitForHealthz above.
+ */
+async function waitForHttp200(name, url, timeoutMs) {
+  const start = Date.now();
+  let lastErr = "no attempt made";
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      if (res.ok) {
+        log(name, `responding (HTTP ${res.status}) after ${Date.now() - start}ms`);
+        return true;
+      }
+      lastErr = `HTTP ${res.status}`;
+    } catch (err) {
+      lastErr = err instanceof Error ? err.message : String(err);
+    }
+    await sleep(500);
+  }
+  log(name, `HTTP 200 wait timeout after ${timeoutMs}ms (last error: ${lastErr})`);
+  return false;
+}
+
+/**
+ * Resolves the triage service's Python interpreter. Prefers the project's
+ * own venv (triage/.venv) -- Scripts/python.exe on Windows, bin/python
+ * elsewhere -- and falls back to the system interpreter (with a clear log
+ * line) if that venv hasn't been created yet, so a fresh clone that has run
+ * `pip install -r triage/requirements.txt` into a system/other interpreter
+ * (per README "First-time setup") can still boot triage.
+ */
+function resolveTriagePython() {
+  const venvPython = path.join(ROOT, "triage", ".venv", isWin ? "Scripts" : "bin", isWin ? "python.exe" : "python");
+  if (fs.existsSync(venvPython)) return venvPython;
+  const fallback = isWin ? "python" : "python3";
+  log(
+    "triage",
+    `no venv interpreter found at ${venvPython}; falling back to system "${fallback}" on PATH ` +
+      `(create the venv with: python -m venv triage/.venv && triage/.venv/${isWin ? "Scripts" : "bin"}/pip install -r triage/requirements.txt)`
+  );
+  return fallback;
+}
+
 // ---------------------------------------------------------------- results
 
 const results = [];
@@ -258,6 +314,7 @@ async function main() {
 
   // --- preflight: ports must be free, never kill unknown processes ---
   const activePorts = SKIP_LEDGER ? Object.entries(PORTS).filter(([n]) => n !== "ledger") : Object.entries(PORTS);
+  if (KEEP_ALIVE) activePorts.push(["dashboard", DASHBOARD_PORT]);
   for (const [name, port] of activePorts) {
     const free = await checkPortFree(port);
     if (!free) {
@@ -307,7 +364,7 @@ async function main() {
     shell: isWin,
   });
 
-  spawnService("triage", path.join(ROOT, "triage", ".venv", "Scripts", "python.exe"), ["app.py"], {
+  spawnService("triage", resolveTriagePython(), ["app.py"], {
     cwd: path.join(ROOT, "triage"),
     env: { PORT: "4500" },
   });
@@ -468,10 +525,28 @@ async function main() {
   if (failed.length === 0) {
     console.log("\nALL GREEN.");
     if (KEEP_ALIVE) {
+      // Controller ruling (final-review fix wave): the dashboard is only
+      // booted here, on PASS, under --keep-alive -- never during the
+      // assertion phase and never on a plain (non-keep-alive) run, since
+      // nothing above this line depends on it.
+      console.log("\n--keep-alive: booting the dashboard (vite dev, port 4600) for the demo...");
+      spawnService("dashboard", isWin ? "npm.cmd" : "npm", ["run", "dev"], {
+        cwd: path.join(ROOT, "dashboard"),
+        env: { VITE_GATEWAY_URL: URLS.gateway },
+        shell: isWin,
+      });
+      const dashboardUp = await waitForHttp200("dashboard", DASHBOARD_URL, 30000);
+      if (!dashboardUp) {
+        console.error(`dashboard did not respond on ${DASHBOARD_URL} within 30s -- it will be omitted below, but is still running/retrying; check its log output above.`);
+      }
+
       console.log("\n--keep-alive: leaving the stack running. URLs:");
       for (const [name, url] of Object.entries(URLS)) {
         if (name === "ledger" && !ledgerUp) continue;
         console.log(`  ${name.padEnd(9)} ${url}`);
+      }
+      if (dashboardUp) {
+        console.log(`  ${"dashboard".padEnd(9)} ${DASHBOARD_URL}`);
       }
       console.log("\nPress Ctrl+C to stop all services.");
       // The run passed and we're now just holding the stack up for the

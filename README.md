@@ -41,7 +41,7 @@ Service contracts (ports, env vars, JSON shapes): [`docs/contracts.md`](docs/con
 | Decision ledger | Spring Boot + PostgreSQL | Stores verdicts, citations, overrides and reviewer feedback; powers the accuracy stat |
 | Cache | Redis | Verdicts keyed by PR head SHA + hunk hash, so the same input always returns the same answer |
 | Raw events | MongoDB | Raw webhook payloads from GitHub, Slack and Linear (file-fallback if absent) |
-| Dashboard | React + TypeScript | Fence map treemap, verdict history, override log, false-positive rate |
+| Dashboard | React + TypeScript | Fence map treemap (tiles shaded by fence count; area sizing by LOC is future work — `loc` is currently always 0), verdict history, override log, false-positive rate |
 | Plaque service | Node.js + GitHub REST API | Turns a "Pin reason" click into a suggested-change review comment on the PR |
 | Code agent | Estelle | Indexes the repo and cited memory; answers whether a change contradicts a recorded reason |
 | CI/CD | GitHub Actions | Builds and tests every service |
@@ -52,6 +52,26 @@ demo, so the whole pipeline runs without any external credentials — see
 [Mock vs. real mode](#mock-vs-real-mode).
 
 ## Quickstart
+
+### First-time setup
+
+On a fresh clone, each service's own dependencies need installing before `node e2e/run.mjs` below
+will work (every service manages its own `node_modules`/venv — there's no root install):
+
+```bash
+(cd mocks && npm install)
+(cd gateway && npm install)
+(cd dashboard && npm install)   # --keep-alive now boots the dashboard too (see below)
+
+# seed needs PyYAML:
+pip install pyyaml              # or create a venv first: python -m venv .venv && .venv/bin/pip install pyyaml
+
+# triage needs its own venv (e2e/run.mjs looks for it at triage/.venv and falls back to the
+# system python/python3 on PATH, with a log line, if it isn't there):
+python -m venv triage/.venv
+triage/.venv/bin/pip install -r triage/requirements.txt       # macOS / Linux
+triage\.venv\Scripts\pip install -r triage\requirements.txt   # Windows
+```
 
 ### Bare metal (fastest; what the demo uses)
 
@@ -67,10 +87,12 @@ diff-analyzer, verdict, gateway, and — unless `SKIP_LEDGER=1` — the ledger),
 demo PRs through the mock GitHub trigger, and asserts the outcomes documented in
 `docs/contracts.md`. Exits 0 on all-green, tearing every service down.
 
-To leave the stack running afterwards (e.g. to drive the demo or poke at the APIs by hand):
+To leave the stack running afterwards (e.g. to drive the demo or poke at the APIs by hand), add
+`--keep-alive`. On a pass, this also boots the **dashboard** (`npm run dev`, vite, port 4600) —
+it's intentionally not part of the assertion phase above, only of the demo-ready stack:
 
 ```bash
-node e2e/run.mjs --keep-alive   # Ctrl+C to stop everything
+node e2e/run.mjs --keep-alive   # Ctrl+C to stop everything, including the dashboard
 ```
 
 Or use the demo wrapper, which does the same thing and also prints the browser tabs to open (see
@@ -181,10 +203,13 @@ boots the stack and prints the exact tab URLs for the current `seed/out`.
    old value. Flagged with the PR that changed the behavior.
 5. **Same input, same answer (15s)** — re-run the first PR. Identical verdict and citations. This
    is the Estelle reliability point (Redis-cached by head SHA + hunk hash).
-6. **Fence plaque (20s)** — click "Pin reason" on the retry-cap flag. A suggested comment appears
-   above the line; commit it. The reason now lives in the code.
-7. **Memory grows (20s)** — a reviewer overrides a flag with a reason. Open a new PR touching the
-   same lines; Chesterton now cites the override.
+6. **Fence plaque (20s)** — click "Pin reason" on the retry-cap flag; the button flips to
+   "Pinned ✓". Reload the mock PR page: the suggested comment (a `` ```suggestion `` block
+   inserting the fence comment line) now renders under the file, same as GitHub would show it.
+7. **Memory grows (20s)** — a reviewer overrides a flag with a reason via the extension. Open the
+   dashboard's Overrides tab: the override is there, and the ledger has recorded a new decision
+   (source `override`) anchored to those lines. (Feeding that override back into mock Estelle's
+   knowledge so a *new* PR on the same lines cites it is future work — see `docs/contracts.md`.)
 8. **Close on the fence map (25s)** — the dashboard heatmap lights up payments and checkout.
    Click the hottest tile to show its fences and citations. End on the one-liner.
 
@@ -221,9 +246,10 @@ Known risks (from `docs/outline.md`):
 
 ## Development
 
-Each service manages its own dependencies and tests independently; see the per-service
-`README.md`/task briefs under `.superpowers/sdd/` for details. The root `package.json` only wires
-the cross-service end-to-end script:
+Each service manages its own dependencies and tests independently; see each service's own
+`README.md` (where one exists, e.g. `triage/README.md`, `seed/README.md`) and
+[`docs/contracts.md`](docs/contracts.md) for details. The root `package.json` only wires the
+cross-service end-to-end script:
 
 ```bash
 npm run e2e              # == node e2e/run.mjs
