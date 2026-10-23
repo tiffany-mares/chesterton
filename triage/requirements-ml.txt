@@ -1,0 +1,5 @@
+# Optional: only needed to run train_torch.py for real (it no-ops without
+# torch). Not installed by default - keeps the service's base image/venv
+# small since the rules-based scorer is the primary, always-on path.
+-r requirements.txt
+torch>=2.2
