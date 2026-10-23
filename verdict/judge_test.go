@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -277,6 +278,124 @@ func TestHandleJudge_StaleComment_ProducesStaleFlag(t *testing.T) {
 	}
 	if f.Line != 29 {
 		t.Fatalf("expected flag line to be comment_line 29, got %d", f.Line)
+	}
+}
+
+// TestHandleJudge_StaleCommentAdjacentToItsHunk_DoesNotCollideInLedger
+// reproduces an e2e-only bug (task-11): extractComments assigns a comment the
+// hunk_hash of its nearest hunk below it (per docs/contracts.md), so a
+// comment directly above its only adjacent hunk shares that hunk's
+// hunk_hash. The ledger upserts verdict rows on (repo, head_sha, hunk_hash)
+// alone, so if processHunk's "no flag" write and processComment's "stale
+// flag" write both use that same hunk_hash, one silently overwrites the
+// other depending on goroutine completion order -- nondeterministically
+// losing the stale_comment flag. This is exactly PR3 from docs/contracts.md
+// ("the three demo PRs"): one hunk (CHECKOUT_TIMEOUT_SECONDS), one comment
+// directly above it, NO_EVIDENCE on the hunk itself, stale on the comment.
+//
+// The simple httptest ledger mock used by the other tests above always
+// returns the same fixed ID and never tracks per-key state, so it can't
+// catch this -- this test uses a stateful mock that performs the real
+// upsert-by-(repo,head_sha,hunk_hash) ledger does, to assert both verdicts
+// land in distinct rows.
+func TestHandleJudge_StaleCommentAdjacentToItsHunk_DoesNotCollideInLedger(t *testing.T) {
+	d := &testDeps{}
+	d.askVerdict = Verdict{Verdict: "NO_EVIDENCE", Reason: "no decision covers this", Citations: nil}
+	d.staleResp = staleResponse{Stale: true, Reason: "comment references removed value", Citations: []Citation{{Type: "linear", URL: "http://x", Title: "ENG-310"}}}
+
+	d.estelleSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/ask":
+			d.askCalls.Add(1)
+			json.NewEncoder(w).Encode(d.askVerdict)
+		case "/v1/stale":
+			d.staleCalls.Add(1)
+			json.NewEncoder(w).Encode(d.staleResp)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer d.estelleSrv.Close()
+
+	// Stateful ledger mock: real upsert-by-(repo,head_sha,hunk_hash), like
+	// the actual Spring Boot ledger service (VerdictService.upsert).
+	type row struct {
+		id      int64
+		verdict string
+		payload string
+	}
+	var mu sync.Mutex
+	rows := map[string]*row{}
+	var nextID int64
+	d.ledgerSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		d.ledgerCalls.Add(1)
+		var body ledgerVerdictRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		key := body.Repo + ":" + body.HeadSHA + ":" + body.HunkHash
+		mu.Lock()
+		rec, ok := rows[key]
+		if !ok {
+			nextID++
+			rec = &row{id: nextID}
+			rows[key] = rec
+		}
+		rec.verdict = body.Verdict
+		rec.payload = string(body.Payload)
+		id := rec.id
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(ledgerVerdictRow{ID: id})
+	}))
+	defer d.ledgerSrv.Close()
+
+	d.checkRunSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		d.checkRunCalls.Add(1)
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(checkRunRow{ID: 12})
+	}))
+	defer d.checkRunSrv.Close()
+
+	srv := NewServer(
+		newEstelleClient(d.estelleSrv.URL, http.DefaultClient),
+		newLedgerClient(d.ledgerSrv.URL, http.DefaultClient),
+		newCheckRunClient(d.checkRunSrv.URL, http.DefaultClient),
+		newMemCache(),
+	)
+
+	hunk := Hunk{
+		File: "services/checkout/api.py", OldStart: 8, OldEnd: 8, NewStart: 8, NewEnd: 8,
+		OldLines: []string{"CHECKOUT_TIMEOUT_SECONDS = 30"}, NewLines: []string{"CHECKOUT_TIMEOUT_SECONDS = 5"},
+		HunkHash: "hh-timeout",
+	}
+	rec, resp := doJudge(t, srv, JudgeRequest{
+		Repo: "acme/storefront", PR: 3, HeadSHA: "shaPR3",
+		Hunks:    []Hunk{hunk},
+		Comments: []Comment{{File: "services/checkout/api.py", Line: 7, Text: "# timeout is 30s, see ENG-310", HunkHash: "hh-timeout"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if len(resp.Flags) != 1 || resp.Flags[0].Kind != "stale_comment" {
+		t.Fatalf("expected exactly 1 stale_comment flag in the response, got %+v", resp.Flags)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 distinct ledger rows (hunk ask-check + comment stale-check), got %d: %+v", len(rows), rows)
+	}
+	hunkKey := "acme/storefront:shaPR3:hh-timeout"
+	hr, ok := rows[hunkKey]
+	if !ok {
+		t.Fatalf("expected a ledger row for the hunk's own ask-check at key %q, rows: %+v", hunkKey, rows)
+	}
+	if hr.verdict != "NO_EVIDENCE" {
+		t.Fatalf("hunk ask-check row was overwritten by the comment's stale-check write: verdict=%q payload=%s", hr.verdict, hr.payload)
 	}
 }
 

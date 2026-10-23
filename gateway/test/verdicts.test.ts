@@ -114,6 +114,73 @@ describe("GET /verdicts", () => {
     expect(res.body).toEqual({ flags: [] });
   });
 
+  // Regression (task-11 e2e): verdict persists every check it attempts to
+  // the ledger, not just the ones that produced a flag (docs/contracts.md:
+  // "still persisted to the ledger even with no flag"). A hunk's own
+  // non-flagged contradiction-check row shares the PR with a legitimately
+  // flagged stale_comment row for an adjacent comment -- exactly PR3 from
+  // docs/contracts.md's "three demo PRs" (CHECKOUT_TIMEOUT_SECONDS hunk:
+  // NO_EVIDENCE/no flag; its comment: stale/flagged). The no-flag row's
+  // payload never sets `status`, so it must not come back as a Flag.
+  it("excludes no-flag placeholder ledger rows (verdict checked, nothing to flag) from /verdicts", async () => {
+    const noFlagRow = {
+      id: 5,
+      repo: "acme/storefront",
+      pr: 3,
+      head_sha: "sha3",
+      hunk_hash: "hh-timeout",
+      decision_id: null,
+      verdict: "NO_EVIDENCE",
+      payload: {
+        id: 0,
+        repo: "acme/storefront",
+        pr: 3,
+        head_sha: "sha3",
+        file: "services/checkout/api.py",
+        line: 0,
+        kind: "contradiction",
+        verdict: "NO_EVIDENCE",
+        reason: "No recorded decision covers this change.",
+        citations: [],
+        hunk_hash: "hh-timeout",
+        status: "",
+      },
+    };
+    const staleFlagRow = {
+      id: 6,
+      repo: "acme/storefront",
+      pr: 3,
+      head_sha: "sha3",
+      hunk_hash: "stale:services/checkout/api.py:7",
+      decision_id: null,
+      verdict: "YES",
+      payload: {
+        id: 6,
+        repo: "acme/storefront",
+        pr: 3,
+        head_sha: "sha3",
+        file: "services/checkout/api.py",
+        line: 7,
+        kind: "stale_comment",
+        verdict: "YES",
+        reason: "Comment references 30, which this change removed or altered.",
+        citations: [],
+        hunk_hash: "hh-timeout",
+        status: "open",
+      },
+    };
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/verdicts?repo=acme%2Fstorefront&pr=3", method: "GET" })
+      .reply(200, [noFlagRow, staleFlagRow]);
+    const { app } = await buildApp();
+
+    const res = await request(app).get("/verdicts").query({ repo: "acme/storefront", pr: 3 });
+    expect(res.status).toBe(200);
+    expect(res.body.flags).toHaveLength(1);
+    expect(res.body.flags[0].kind).toBe("stale_comment");
+  });
+
   it("falls back to the in-memory judge cache when the ledger is down", async () => {
     mockAgent
       .get("http://github.test")

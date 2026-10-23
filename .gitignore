@@ -17,6 +17,8 @@ target/
 
 # go
 verdict/bin/
+verdict/*.exe
+verdict/verdict_e2e
 
 # java
 ledger/target/

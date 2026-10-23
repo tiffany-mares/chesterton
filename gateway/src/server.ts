@@ -42,6 +42,21 @@ export interface CreateAppOptions {
   fetchImpl?: typeof fetch;
 }
 
+/**
+ * The ledger's `verdict` table records every check verdict attempted
+ * (flagged or not) for audit, per docs/contracts.md ("still persisted to
+ * the ledger even with no flag"). A real Flag always carries a `status` in
+ * FlagStatus ("open" | "dismissed" | "overridden"); verdict's no-flag
+ * placeholder rows (NO/NO_EVIDENCE outcomes with nothing to show) never set
+ * `status` at all. Without this filter a hunk's own non-flagged
+ * contradiction-check row and a *different*, legitimately flagged
+ * stale-comment row for the same PR would both come back from `/verdicts`
+ * as if they were both actionable flags.
+ */
+function isActualFlag(flag: Flag): boolean {
+  return flag.status === "open" || flag.status === "dismissed" || flag.status === "overridden";
+}
+
 /** Merges ledger/cache flags with the local dismiss/override overlay so a
  * dismiss or override is never lost even if the ledger write didn't stick. */
 function applyLocalOverlay(flags: Flag[], localState: LocalOverrideState): Flag[] {
@@ -110,7 +125,7 @@ export function createApp(opts: CreateAppOptions): Express {
       let flags: Flag[];
       try {
         const rows = await getVerdicts(opts.ledgerUrl, repo, pr, opts.fetchImpl);
-        flags = rows.map((row) => ({ ...(row.payload as Flag), id: row.id }));
+        flags = rows.map((row) => ({ ...(row.payload as Flag), id: row.id })).filter(isActualFlag);
       } catch {
         // The judge cache is keyed by repo:pr, so it can only help the
         // ledger-down fallback when a specific pr was requested.

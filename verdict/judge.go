@@ -174,6 +174,19 @@ func (s *Server) processComment(ctx context.Context, repo string, pr int, headSH
 		return decodeCachedFlag(cached)
 	}
 
+	// Ledger upserts verdict rows on (repo, head_sha, hunk_hash) alone. A
+	// comment's hunk_hash (c.HunkHash) is its *nearest adjacent hunk*'s hash
+	// (docs/contracts.md -- "a comment belongs to the nearest hunk below it
+	// in the same file"), which for a comment directly above its only
+	// adjacent hunk is the SAME hunk_hash that hunk's own ask-check
+	// persists under (see processHunk above). Without a distinct key here,
+	// this stale-check's ledger write and that hunk's ask-check ledger
+	// write race for the same row, and whichever write lands last silently
+	// overwrites the other (losing a flag nondeterministically -- this is
+	// exactly PR3 from docs/contracts.md's "three demo PRs"). Mirror the
+	// cache key's own disambiguation (above) for the ledger write too.
+	ledgerHunkHash := fmt.Sprintf("stale:%s:%d", c.File, c.Line)
+
 	resp, err := s.estelle.Stale(ctx, repo, c.File, c.Text, c.Line, hunk)
 	if err != nil {
 		return nil, fmt.Errorf("stale check for %s:%d: %w", c.File, c.Line, err)
@@ -205,11 +218,11 @@ func (s *Server) processComment(ctx context.Context, repo string, pr int, headSH
 			HunkHash:  c.HunkHash,
 			Status:    "open",
 		}
-		s.persistVerdict(ctx, repo, pr, headSHA, c.HunkHash, verdictValue, &flag, true)
+		s.persistVerdict(ctx, repo, pr, headSHA, ledgerHunkHash, verdictValue, &flag, true)
 		result = &flag
 	} else {
 		noFlag := Flag{Repo: repo, PR: pr, HeadSHA: headSHA, File: c.File, Line: c.Line, Kind: "stale_comment", Verdict: verdictValue, Reason: resp.Reason, Citations: resp.Citations, HunkHash: c.HunkHash}
-		s.persistVerdict(ctx, repo, pr, headSHA, c.HunkHash, verdictValue, &noFlag, false)
+		s.persistVerdict(ctx, repo, pr, headSHA, ledgerHunkHash, verdictValue, &noFlag, false)
 	}
 
 	s.storeInCache(ctx, key, result)
