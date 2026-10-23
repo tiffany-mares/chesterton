@@ -1,0 +1,220 @@
+
+# Chesterton -- full stack via Docker Compose.
+#
+# Mirrors the bare-metal boot order/env vars in e2e/run.mjs and the contract
+# table in docs/contracts.md, with service names as hostnames instead of
+# localhost. Validate without the daemon running: `docker compose -f
+# infra/docker-compose.yml config`.
+#
+# Usage:
+#   docker compose -f infra/docker-compose.yml up --build
+#   (the `seed` job runs once automatically before `mocks` starts; re-run it
+#   with `docker compose -f infra/docker-compose.yml run --rm seed` to reset)
+#
+# The extension is never dockerized -- load extension/dist unpacked in
+# Chrome per the README.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: chesterton
+      POSTGRES_PASSWORD: chesterton
+      POSTGRES_DB: chesterton
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chesterton -d chesterton"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot init job: builds seed/out (demo git repo + knowledge/slack/
+  # linear/prs fixtures) into the seed-data volume. `mocks` waits for it to
+  # exit 0 before starting (service_completed_successfully).
+  seed:
+    build:
+      context: ../seed
+      dockerfile: Dockerfile
+    volumes:
+      - seed-data:/out
+    restart: "no"
+
+  diff-analyzer:
+    build:
+      context: ../diff-analyzer
+      dockerfile: Dockerfile
+    ports:
+      - "4200:4200"
+    environment:
+      PORT: "4200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+
+  triage:
+    build:
+      context: ../triage
+      dockerfile: Dockerfile
+    ports:
+      - "4500:4500"
+    environment:
+      PORT: "4500"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4500/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+
+  mocks:
+    build:
+      context: ../mocks
+      dockerfile: Dockerfile
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - "4100:4100"
+    environment:
+      PORT: "4100"
+      SEED_OUT_DIR: /seed/out
+      GATEWAY_URL: http://gateway:4000
+      GITHUB_WEBHOOK_SECRET: devsecret
+    volumes:
+      - seed-data:/seed/out:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4100/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+
+  ledger:
+    build:
+      context: ../ledger
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4400:4400"
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      DATABASE_URL: postgres://chesterton:chesterton@postgres:5432/chesterton
+      SERVER_PORT: "4400"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4400/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 45s
+      retries: 20
+
+  verdict:
+    build:
+      context: ../verdict
+      dockerfile: Dockerfile
+    depends_on:
+      mocks:
+        condition: service_healthy
+      ledger:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4300:4300"
+    environment:
+      PORT: "4300"
+      ESTELLE_URL: http://mocks:4100/estelle
+      GITHUB_API_URL: http://mocks:4100/github/api
+      LEDGER_URL: http://ledger:4400
+      REDIS_URL: redis://redis:6379
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4300/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    depends_on:
+      diff-analyzer:
+        condition: service_healthy
+      triage:
+        condition: service_healthy
+      verdict:
+        condition: service_healthy
+      ledger:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: "4000"
+      ANALYZER_URL: http://diff-analyzer:4200
+      TRIAGE_URL: http://triage:4500
+      VERDICT_URL: http://verdict:4300
+      LEDGER_URL: http://ledger:4400
+      GITHUB_API_URL: http://mocks:4100/github/api
+      GITHUB_WEBHOOK_SECRET: devsecret
+      MONGO_URL: mongodb://mongo:27017/chesterton
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+
+  dashboard:
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
+      args:
+        VITE_GATEWAY_URL: http://localhost:4000
+    depends_on:
+      gateway:
+        condition: service_healthy
+    ports:
+      - "4600:4600"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4600/"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+
+volumes:
+  postgres-data:
+  mongo-data:
+  seed-data:
