@@ -51,11 +51,11 @@ export async function runPipeline(event: PipelineEvent, deps: PipelineDeps): Pro
     filteredHunks = hunks.filter((h) => (scoreByHash.get(h.hunk_hash) ?? 0) >= SCORE_THRESHOLD);
   }
 
-  if (filteredHunks.length === 0 && comments.length === 0) {
-    deps.judgeCache?.set(event.repo, event.pr, []);
-    return { flags: [] };
-  }
-
+  // Controller ruling: ALWAYS call /judge, even with empty hunks[] and
+  // comments[]. Verdict is what posts the check run, and a harmless
+  // refactor PR (no hunk clears the triage filter, no stale-comment
+  // candidates) must still get its neutral check run rather than silently
+  // never posting one.
   const judgeResult = await judge(
     deps.verdictUrl,
     {

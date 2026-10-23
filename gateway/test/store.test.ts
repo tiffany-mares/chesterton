@@ -20,19 +20,21 @@ describe("createRawEventStore", () => {
     expect(store.mode).toBe("file");
   });
 
-  it("writes a JSON file named <timestamp>-<delivery-id>.json", async () => {
+  it("writes the raw bytes verbatim to a file named <timestamp>-<delivery-id>.json", async () => {
     const store = await createRawEventStore({ mongoUrl: undefined, rawEventsDir: tmpDir });
-    await store.save({ hello: "world" }, "abc-123");
+    const rawBytes = Buffer.from(JSON.stringify({ hello: "world" }));
+    await store.save(rawBytes, "abc-123");
     const files = fs.readdirSync(tmpDir);
     expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/^\d+-abc-123\.json$/);
-    const content = JSON.parse(fs.readFileSync(path.join(tmpDir, files[0]), "utf8"));
-    expect(content).toEqual({ hello: "world" });
+    // Exact byte-for-byte match -- no re-serialization/pretty-printing.
+    const written = fs.readFileSync(path.join(tmpDir, files[0]));
+    expect(written.equals(rawBytes)).toBe(true);
   });
 
   it("falls back to a random suffix when no delivery id is given", async () => {
     const store = await createRawEventStore({ mongoUrl: undefined, rawEventsDir: tmpDir });
-    await store.save({ a: 1 });
+    await store.save(Buffer.from(JSON.stringify({ a: 1 })));
     const files = fs.readdirSync(tmpDir);
     expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/^\d+-[0-9a-f]+\.json$/);
@@ -77,9 +79,13 @@ describe("createRawEventStore", () => {
       }),
     });
     expect(store.mode).toBe("mongo");
-    await store.save({ x: 1 }, "delivery-1");
+    await store.save(Buffer.from(JSON.stringify({ x: 1 })), "delivery-1");
     expect(inserted).toHaveLength(1);
-    expect((inserted[0] as { delivery_id: string }).delivery_id).toBe("delivery-1");
+    const doc = inserted[0] as { delivery_id: string; raw: string; payload: unknown };
+    expect(doc.delivery_id).toBe("delivery-1");
+    // Raw string is stored verbatim; the parsed copy is a convenience.
+    expect(doc.raw).toBe(JSON.stringify({ x: 1 }));
+    expect(doc.payload).toEqual({ x: 1 });
   });
 });
 

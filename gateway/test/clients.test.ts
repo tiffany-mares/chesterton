@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { analyzeDiff } from "../src/clients/analyzer.js";
 import { scoreHunks } from "../src/clients/triage.js";
 import { judge } from "../src/clients/verdictClient.js";
-import { getVerdicts, upsertVerdict, getDecisions } from "../src/clients/ledger.js";
+import { getVerdicts, upsertVerdict, getDecisions, getOverrides } from "../src/clients/ledger.js";
 import { getPrDiff, postReviewComment } from "../src/clients/github.js";
 import type { Hunk } from "../src/types.js";
 
@@ -112,6 +112,27 @@ describe("ledger client", () => {
 
     const rows = await getDecisions("http://ledger.test", "acme/storefront", "services/payments/client.py");
     expect(rows).toEqual([{ id: 1, file: "services/payments/client.py" }]);
+  });
+
+  it("GETs /verdicts with only repo when pr is omitted", async () => {
+    const pool = mockAgent.get("http://ledger.test");
+    pool
+      .intercept({ path: "/verdicts?repo=acme%2Fstorefront", method: "GET" })
+      .reply(200, [{ id: 2, repo: "acme/storefront", pr: 2, head_sha: "s", hunk_hash: "h", decision_id: null, verdict: "YES", payload: {} }]);
+
+    const rows = await getVerdicts("http://ledger.test", "acme/storefront", undefined);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(2);
+  });
+
+  it("GETs /overrides proxying the repo query param", async () => {
+    const pool = mockAgent.get("http://ledger.test");
+    pool
+      .intercept({ path: "/overrides?repo=acme%2Fstorefront", method: "GET" })
+      .reply(200, [{ id: 1, verdict_id: 17, reason: "fence still applies", author: "alice" }]);
+
+    const rows = await getOverrides("http://ledger.test", "acme/storefront");
+    expect(rows).toEqual([{ id: 1, verdict_id: 17, reason: "fence still applies", author: "alice" }]);
   });
 });
 

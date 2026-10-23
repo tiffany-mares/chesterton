@@ -21,7 +21,9 @@ import path from "node:path";
 
 export interface RawEventStore {
   readonly mode: "mongo" | "file";
-  save(event: unknown, deliveryId?: string): Promise<void>;
+  /** `rawBody` is the exact bytes of the webhook request body (the same
+   * Buffer captured for HMAC verification), stored verbatim. */
+  save(rawBody: Buffer, deliveryId?: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -59,11 +61,13 @@ function fileSafeId(): string {
 function makeFileStore(rawEventsDir: string): RawEventStore {
   return {
     mode: "file",
-    async save(event: unknown, deliveryId?: string) {
+    async save(rawBody: Buffer, deliveryId?: string) {
       await fsp.mkdir(rawEventsDir, { recursive: true });
       const suffix = deliveryId && deliveryId.length > 0 ? deliveryId : fileSafeId();
       const filename = `${Date.now()}-${suffix}.json`;
-      await fsp.writeFile(path.join(rawEventsDir, filename), JSON.stringify(event, null, 2), "utf8");
+      // Write the raw bytes verbatim (no re-serialization) so the stored
+      // payload is byte-identical to what GitHub sent / what HMAC verified.
+      await fsp.writeFile(path.join(rawEventsDir, filename), rawBody);
     },
     async close() {
       // nothing to close for file mode
@@ -75,11 +79,21 @@ function makeMongoStore(client: MongoLikeClient): RawEventStore {
   const collection = client.db().collection("raw_events");
   return {
     mode: "mongo",
-    async save(event: unknown, deliveryId?: string) {
+    async save(rawBody: Buffer, deliveryId?: string) {
+      const raw = rawBody.toString("utf8");
+      // Parsed copy is a convenience for querying in Mongo; the raw string
+      // above remains the source of truth for the exact bytes received.
+      let payload: unknown;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = undefined;
+      }
       await collection.insertOne({
         received_at: new Date().toISOString(),
         delivery_id: deliveryId ?? null,
-        payload: event,
+        raw,
+        payload,
       });
     },
     async close() {

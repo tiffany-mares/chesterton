@@ -34,14 +34,16 @@ async function asJson<T>(res: Response, label: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** `pr` is optional per docs/contracts.md: omitted returns all rows for the repo. */
 export async function getVerdicts(
   ledgerUrl: string,
   repo: string,
-  pr: number,
+  pr: number | undefined,
   fetchImpl: typeof fetch = fetch
 ): Promise<LedgerVerdictRow[]> {
-  const url = `${ledgerUrl}/verdicts?repo=${encodeURIComponent(repo)}&pr=${pr}`;
-  const res = await fetchImpl(url);
+  const params = new URLSearchParams({ repo });
+  if (pr !== undefined) params.set("pr", String(pr));
+  const res = await fetchImpl(`${ledgerUrl}/verdicts?${params.toString()}`);
   return asJson<LedgerVerdictRow[]>(res, "GET /verdicts");
 }
 
@@ -56,6 +58,17 @@ export async function upsertVerdict(
     body: JSON.stringify(body),
   });
   return asJson<LedgerVerdictRow>(res, "POST /verdicts");
+}
+
+/** Added per controller scope addition: proxy of ledger's `GET /overrides`,
+ * consumed by the dashboard's overrides view. */
+export async function getOverrides(
+  ledgerUrl: string,
+  repo: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<unknown> {
+  const res = await fetchImpl(`${ledgerUrl}/overrides?repo=${encodeURIComponent(repo)}`);
+  return asJson<unknown>(res, "GET /overrides");
 }
 
 export async function createOverride(

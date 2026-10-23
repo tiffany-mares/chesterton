@@ -6,7 +6,7 @@ import { MockAgent, setGlobalDispatcher } from "undici";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/server.js";
-import { createRawEventStore, LocalOverrideState } from "../src/store.js";
+import { createRawEventStore, LocalOverrideState, type RawEventStore } from "../src/store.js";
 
 const SECRET = "devsecret";
 
@@ -182,6 +182,44 @@ describe("POST /webhooks/github", () => {
     expect(res.status).toBe(400);
   });
 
+  it("ignores non-pull_request event types via X-GitHub-Event, even with a pull_request-shaped action", async () => {
+    const { app } = await buildApp();
+    // action "opened" would normally be handled, but the header says this
+    // is an "issues" event, which must be ignored before any action check.
+    // No downstream mocks are registered: if the pipeline ran anyway, the
+    // MockAgent (disableNetConnect) would throw.
+    const issuesPayload = { ...PAYLOAD, action: "opened" };
+    const issuesStr = JSON.stringify(issuesPayload);
+    const signature = sign(SECRET, issuesStr);
+
+    const res = await request(app)
+      .post("/webhooks/github")
+      .set("Content-Type", "application/json")
+      .set("X-Hub-Signature-256", signature)
+      .set("X-GitHub-Event", "issues")
+      .send(issuesStr);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ignored: true });
+  });
+
+  it("treats a missing X-GitHub-Event header as pull_request (mock trigger compatibility)", async () => {
+    stubHappyPathDownstream();
+    const { app } = await buildApp();
+    const signature = sign(SECRET, PAYLOAD_STR);
+
+    // Mirrors mocks/src/github.ts's POST /trigger/pr, which signs and
+    // forwards the webhook WITHOUT an X-GitHub-Event header.
+    const res = await request(app)
+      .post("/webhooks/github")
+      .set("Content-Type", "application/json")
+      .set("X-Hub-Signature-256", signature)
+      .send(PAYLOAD_STR);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ flags: 1 });
+  });
+
   it("handles the opened action the same as synchronize", async () => {
     stubHappyPathDownstream();
     const { app } = await buildApp();
@@ -197,6 +235,46 @@ describe("POST /webhooks/github", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ flags: 1 });
+  });
+});
+
+describe("resilience: a storage failure degrades gracefully instead of crashing", () => {
+  it("continues to the pipeline (and keeps serving subsequent requests) when rawEventStore.save rejects", async () => {
+    stubHappyPathDownstream();
+    const localState = LocalOverrideState.load(path.join(tmpDir, "local-state.json"));
+    const throwingStore: RawEventStore = {
+      mode: "file",
+      save: async () => {
+        throw new Error("disk full");
+      },
+      close: async () => {},
+    };
+    const app = createApp({
+      analyzerUrl: "http://analyzer.test",
+      triageUrl: "http://triage.test",
+      verdictUrl: "http://verdict.test",
+      ledgerUrl: "http://ledger.test",
+      githubApiUrl: "http://github.test",
+      githubToken: "",
+      webhookSecret: SECRET,
+      rawEventStore: throwingStore,
+      localState,
+    });
+    const signature = sign(SECRET, PAYLOAD_STR);
+
+    const res = await request(app)
+      .post("/webhooks/github")
+      .set("Content-Type", "application/json")
+      .set("X-Hub-Signature-256", signature)
+      .send(PAYLOAD_STR);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ flags: 1 });
+
+    // The process (and this app/server) must still be serving afterwards.
+    const health = await request(app).get("/healthz");
+    expect(health.status).toBe(200);
+    expect(health.body).toEqual({ ok: true, service: "gateway" });
   });
 });
 

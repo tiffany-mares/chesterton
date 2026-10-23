@@ -131,19 +131,31 @@ describe("runPipeline", () => {
     expect(cache.get("acme/storefront", 1)).toEqual([FLAG]);
   });
 
-  it("skips triage and verdict entirely when the analyzer returns no hunks", async () => {
+  it("skips triage (nothing to score) but still calls verdict with empty hunks/comments when the analyzer returns no hunks", async () => {
+    // Controller ruling: verdict posts the check run, so it must be called
+    // even with empty inputs -- the demo's harmless-refactor PR must still
+    // get its neutral check run.
     const githubPool = mockAgent.get("http://github.test");
     githubPool.intercept({ path: "/repos/acme/storefront/pulls/2", method: "GET" }).reply(200, "no-op diff");
     const analyzerPool = mockAgent.get("http://analyzer.test");
     analyzerPool.intercept({ path: "/analyze", method: "POST" }).reply(200, { hunks: [] });
-    // No interceptors registered for triage/verdict pools at all -> an
-    // unexpected call would throw (disableNetConnect + no matching mock).
+    // No interceptor registered for triage -> an unexpected call would throw
+    // (disableNetConnect + no matching mock), proving triage is still skipped.
+    const verdictPool = mockAgent.get("http://verdict.test");
+    verdictPool
+      .intercept({ path: "/judge", method: "POST" })
+      .reply(200, (opts) => {
+        const body = JSON.parse(String(opts.body));
+        expect(body.hunks).toEqual([]);
+        expect(body.comments).toEqual([]);
+        return { flags: [], check_run_id: 99 };
+      });
 
     const result = await runPipeline({ repo: "acme/storefront", pr: 2, headSha: "sha456" }, baseDeps);
     expect(result.flags).toEqual([]);
   });
 
-  it("skips verdict when all hunks score below 0.5 and there are no stale-comment candidates", async () => {
+  it("still calls verdict with empty filtered hunks when all hunks score below 0.5 and there are no stale-comment candidates", async () => {
     const githubPool = mockAgent.get("http://github.test");
     githubPool.intercept({ path: "/repos/acme/storefront/pulls/3", method: "GET" }).reply(200, DIFF_TEXT);
     const analyzerPool = mockAgent.get("http://analyzer.test");
@@ -152,7 +164,15 @@ describe("runPipeline", () => {
     triagePool
       .intercept({ path: "/score", method: "POST" })
       .reply(200, { scores: [{ hunk_hash: "hashLOW", score: 0.1, reasons: [] }] });
-    // No verdict interceptor registered: calling it would throw.
+    const verdictPool = mockAgent.get("http://verdict.test");
+    verdictPool
+      .intercept({ path: "/judge", method: "POST" })
+      .reply(200, (opts) => {
+        const body = JSON.parse(String(opts.body));
+        // The low-scoring hunk must have been filtered out before verdict.
+        expect(body.hunks).toEqual([]);
+        return { flags: [], check_run_id: 100 };
+      });
 
     const result = await runPipeline({ repo: "acme/storefront", pr: 3, headSha: "sha789" }, baseDeps);
     expect(result.flags).toEqual([]);

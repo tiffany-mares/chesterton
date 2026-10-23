@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { MockAgent, setGlobalDispatcher } from "undici";
 import request from "supertest";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/server.js";
 import { createRawEventStore, LocalOverrideState } from "../src/store.js";
 
@@ -177,10 +177,85 @@ describe("GET /verdicts", () => {
     expect(res.body.flags[0].hunk_hash).toBe("hashHIGH");
   });
 
-  it("returns 400 when repo or pr query params are missing", async () => {
+  it("returns 400 when repo is missing (pr is now optional)", async () => {
     const { app } = await buildApp();
-    const res = await request(app).get("/verdicts").query({ repo: "acme/storefront" });
+    const res = await request(app).get("/verdicts").query({ pr: 1 });
     expect(res.status).toBe(400);
+  });
+
+  it("omits pr and returns all flags for the repo from the ledger", async () => {
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/verdicts?repo=acme%2Fstorefront", method: "GET" })
+      .reply(200, [LEDGER_ROW, { ...LEDGER_ROW, id: 18, pr: 2, payload: { ...LEDGER_ROW.payload, id: 18, pr: 2 } }]);
+    const { app } = await buildApp();
+
+    const res = await request(app).get("/verdicts").query({ repo: "acme/storefront" });
+    expect(res.status).toBe(200);
+    expect(res.body.flags).toHaveLength(2);
+    expect(res.body.flags.map((f: { pr: number }) => f.pr).sort()).toEqual([1, 2]);
+  });
+
+  it("without pr, falls back to an empty list (never 500s) when the ledger is unreachable", async () => {
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/verdicts?repo=acme%2Fstorefront", method: "GET" })
+      .replyWithError(new Error("ECONNREFUSED"));
+    const { app } = await buildApp();
+
+    const res = await request(app).get("/verdicts").query({ repo: "acme/storefront" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ flags: [] });
+  });
+});
+
+describe("GET /overrides", () => {
+  it("proxies to the ledger and returns its JSON verbatim", async () => {
+    const overridesPayload = [{ id: 1, verdict_id: 17, reason: "fence still applies", author: "alice" }];
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/overrides?repo=acme%2Fstorefront", method: "GET" })
+      .reply(200, overridesPayload);
+    const { app } = await buildApp();
+
+    const res = await request(app).get("/overrides").query({ repo: "acme/storefront" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(overridesPayload);
+  });
+
+  it("returns 502 when the ledger is unreachable", async () => {
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/overrides?repo=acme%2Fstorefront", method: "GET" })
+      .replyWithError(new Error("ECONNREFUSED"));
+    const { app } = await buildApp();
+
+    const res = await request(app).get("/overrides").query({ repo: "acme/storefront" });
+    expect(res.status).toBe(502);
+  });
+});
+
+describe("resilience: an unexpected throw inside a route is caught by the global error middleware", () => {
+  it("returns a 500 JSON error instead of crashing, and the server keeps serving afterwards", async () => {
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/verdicts?repo=acme%2Fstorefront&pr=1", method: "GET" })
+      .reply(200, [LEDGER_ROW]);
+    const { app, localState } = await buildApp();
+    // Simulate an unexpected failure deep in a dependency that isn't
+    // guarded by a route-local try/catch (here: the local-overlay lookup
+    // that runs after the ledger fetch succeeds).
+    vi.spyOn(localState, "isDismissed").mockImplementation(() => {
+      throw new Error("corrupted local state");
+    });
+
+    const res = await request(app).get("/verdicts").query({ repo: "acme/storefront", pr: 1 });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBeDefined();
+
+    const health = await request(app).get("/healthz");
+    expect(health.status).toBe(200);
+    expect(health.body).toEqual({ ok: true, service: "gateway" });
   });
 });
 
@@ -191,6 +266,21 @@ describe("POST /flags/:id/dismiss", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, id: 17, status: "dismissed" });
     expect(localState.isDismissed(17)).toBe(true);
+  });
+
+  it("still returns the local result when the local-state storage write itself throws", async () => {
+    const { app, localState } = await buildApp();
+    vi.spyOn(localState, "markDismissed").mockImplementation(() => {
+      throw new Error("ENOSPC: no space left on device");
+    });
+
+    const res = await request(app).post("/flags/17/dismiss").send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, id: 17, status: "dismissed" });
+
+    // The server must keep serving afterwards too.
+    const health = await request(app).get("/healthz");
+    expect(health.status).toBe(200);
   });
 });
 
