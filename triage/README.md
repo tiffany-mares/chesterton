@@ -88,3 +88,19 @@ the checkpoint path before starting `app.py`; if torch isn't installed or the
 file fails to load, the service silently falls back to rules — this is
 covered by `tests/test_train_torch.py` and the `_load_model` guard in
 `app.py`.
+
+### End-to-end training walkthrough (verified)
+
+```bash
+pip install -r requirements-ml.txt       # torch (CPU build is fine)
+python ../seed/seed.py --reset           # if seed/out doesn't exist yet
+# start the analyzer (bare metal `cargo run` or the compose stack), then:
+python dump_corpus.py                    # seed PR diffs -> analyzer -> hunks.json
+MODEL_PATH=model.pt python train_torch.py hunks.json
+MODEL_PATH=model.pt python app.py        # service now scores with the MLP
+```
+
+`train_torch.py` ends with a probe of the demo's retry-cap hunk and warns if
+the trained model scores it under the gateway's 0.5 filter (that would
+silently kill demo PR 1). With the default 500 epochs on the seeded corpus it
+lands ~0.9, and a pure rename ~0.0 — same side of the threshold as the rules.

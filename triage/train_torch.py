@@ -53,7 +53,7 @@ def _build_model():
     )
 
 
-def train(hunks: list[dict], epochs: int = 100, lr: float = 0.01):
+def train(hunks: list[dict], epochs: int = 500, lr: float = 0.01):
     """Train a tiny MLP on rule-labelled hunks. Returns the model, or None if
     torch isn't installed."""
     if not TORCH_AVAILABLE:
@@ -110,6 +110,16 @@ def main() -> None:
     if model is not None:
         torch.save(model, out_path)
         print(f"saved model to {out_path}")
+        # Sanity-check against the demo's make-or-break threshold (the
+        # gateway filters at score >= 0.5): a model that scores the
+        # retry-cap hunk below it would silently kill the demo.
+        retry_probe = {
+            "file": "services/payments/client.py", "symbol": "", "hunk_hash": "probe",
+            "old_start": 5, "old_end": 5, "new_start": 5, "new_end": 5,
+            "old_lines": ["MAX_RETRIES = 3"], "new_lines": ["MAX_RETRIES = 50"],
+        }
+        score, _ = score_with_model(model, retry_probe)
+        print(f"retry-cap probe score: {score} ({'OK' if score >= 0.5 else 'WARNING: below the 0.5 pipeline threshold'})")
 
 
 if __name__ == "__main__":
