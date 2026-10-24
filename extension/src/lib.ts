@@ -2,11 +2,20 @@
 // and flag-card construction. No chrome.* usage here so this stays testable under
 // vitest + jsdom without a browser (see src/api.ts for the chrome.* boundary).
 //
-// DOM contract (docs/contracts.md "extension (MV3)"), as rendered by both github.com
-// and mocks/src/pages/prFiles.ts:
+// Two DOM contracts are supported:
+//
+// Classic markup (docs/contracts.md "extension (MV3)"), as rendered by
+// mocks/src/pages/prFiles.ts and GitHub's legacy files view:
 //   - file container: div[data-tagsearch-path] (fallback: .file-header[data-path]'s
-//     ancestor, since real GitHub markup can vary)
+//     ancestor)
 //   - line cell: td.blob-num[data-line-number] on the addition side (.blob-num-addition)
+//
+// Real github.com React diff viewer (the /files URL redirects to /changes; structure
+// captured live 2026-10-24, see test/realGithubFixture.ts):
+//   - file container: div[id="diff-<sha256(path)>"], matched via its heading text
+//     (an h3 whose text is the path wrapped in U+200E marks) — the hashed CSS-module
+//     class names are NOT stable and never used here
+//   - line cell: td[data-line-number] with data-diff-side ("right" = new side)
 
 export type CitationType = "slack" | "linear" | "pr" | "override";
 
@@ -84,7 +93,9 @@ function matchPullFilesSegments(segments: string[], offset: number): PrLocation 
   const prNumber = segments[offset + 3];
   const filesKeyword = segments[offset + 4];
 
-  if (!owner || !repo || pullKeyword !== "pull" || !prNumber || filesKeyword !== "files") {
+  // github.com now serves the files view at /pull/{n}/changes (the /files
+  // URL redirects there); the mock still uses /files.
+  if (!owner || !repo || pullKeyword !== "pull" || !prNumber || (filesKeyword !== "files" && filesKeyword !== "changes")) {
     return null;
   }
 
@@ -112,9 +123,28 @@ export function findFileContainer(doc: Document, file: string): Element | null {
   if (byTagsearch) return byTagsearch;
 
   const header = doc.querySelector(`.file-header[data-path="${escaped}"]`);
-  if (!header) return null;
+  if (header) return header.closest(".file") ?? header.parentElement;
 
-  return header.closest(".file") ?? header.parentElement;
+  return findNewViewerContainer(doc, file);
+}
+
+/** Strips the U+200E/U+200F directionality marks GitHub wraps path text in. */
+function stripDirectionMarks(text: string): string {
+  return text.replace(/[‎‏]/g, "").trim();
+}
+
+/**
+ * Real github.com React diff viewer: each file is a div whose id is
+ * "diff-" + sha256(path). Hashing is async in browsers, so the container is
+ * matched via its heading text instead (an h3 holding the path).
+ */
+function findNewViewerContainer(doc: Document, file: string): Element | null {
+  for (const heading of Array.from(doc.querySelectorAll('div[id^="diff-"] h3'))) {
+    if (stripDirectionMarks(heading.textContent ?? "") === file) {
+      return heading.closest('div[id^="diff-"]');
+    }
+  }
+  return null;
 }
 
 /**
@@ -124,15 +154,21 @@ export function findFileContainer(doc: Document, file: string): Element | null {
  */
 export function findLineCell(container: Element, line: number): Element | null {
   const cells = Array.from(container.querySelectorAll(`td.blob-num[data-line-number="${line}"]`));
-  if (cells.length === 0) return null;
+  if (cells.length > 0) {
+    const addition = cells.find((c) => c.classList.contains("blob-num-addition"));
+    if (addition) return addition;
 
-  const addition = cells.find((c) => c.classList.contains("blob-num-addition"));
-  if (addition) return addition;
+    const nonDeletion = cells.find((c) => !c.classList.contains("blob-num-deletion"));
+    if (nonDeletion) return nonDeletion;
 
-  const nonDeletion = cells.find((c) => !c.classList.contains("blob-num-deletion"));
-  if (nonDeletion) return nonDeletion;
+    return cells[0];
+  }
 
-  return cells[0];
+  // Real github.com React viewer: td[data-line-number] with data-diff-side;
+  // "right" is the new side (flags anchor to new-file line numbers).
+  const viewerCells = Array.from(container.querySelectorAll(`td[data-line-number="${line}"]`));
+  if (viewerCells.length === 0) return null;
+  return viewerCells.find((c) => c.getAttribute("data-diff-side") === "right") ?? viewerCells[0];
 }
 
 /**
@@ -151,7 +187,11 @@ export function locateAnchor(doc: Document, flag: Pick<Flag, "file" | "line">): 
     if (row) return { type: "row", element: row };
   }
 
-  const header = container.querySelector(".file-header[data-path]") ?? container.querySelector(".file-header");
+  const header =
+    container.querySelector(".file-header[data-path]") ??
+    container.querySelector(".file-header") ??
+    // Real github.com React viewer: the file heading is an h3.
+    container.querySelector("h3");
   if (header) return { type: "header", element: header };
 
   // No header found either (unexpected markup) -- anchor to the container itself.

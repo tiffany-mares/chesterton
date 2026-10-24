@@ -11,6 +11,7 @@ import {
   type Flag,
 } from "../src/lib.js";
 import { PAYMENTS_FILE, paymentsFileLines, renderFileBlock, renderPrPage } from "./fixtures.js";
+import { realGithubChangesDom } from "./realGithubFixture.js";
 
 function makeFlag(overrides: Partial<Flag> = {}): Flag {
   return {
@@ -66,6 +67,19 @@ describe("parsePrUrl", () => {
     expect(parsePrUrl("https://github.com/acme/storefront/issues/1")).toBeNull();
     expect(parsePrUrl("https://github.com/acme/storefront/pull/1")).toBeNull();
     expect(parsePrUrl("not a url")).toBeNull();
+  });
+
+  it("parses the new github.com /changes URL (the /files URL now redirects there)", () => {
+    expect(parsePrUrl("https://github.com/acme/storefront/pull/7/changes")).toEqual({
+      owner: "acme",
+      repo: "storefront",
+      pr: 7,
+    });
+    expect(parsePrUrl("https://github.com/acme/storefront/pull/7/changes?w=1#diff-x")).toEqual({
+      owner: "acme",
+      repo: "storefront",
+      pr: 7,
+    });
   });
 });
 
@@ -256,5 +270,58 @@ describe("debounce", () => {
     vi.advanceTimersByTime(1);
     expect(fn).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
+  });
+});
+
+describe("real github.com React diff viewer (/changes markup)", () => {
+  const FILE = "services/payments/client.py";
+
+  function mountRealDom(): void {
+    document.body.innerHTML = realGithubChangesDom();
+  }
+
+  it("finds the file container via its header text (ids are sha256 hashes)", () => {
+    mountRealDom();
+    const container = findFileContainer(document, FILE);
+    expect(container).not.toBeNull();
+    expect(container?.id.startsWith("diff-")).toBe(true);
+    expect(container?.querySelector("table")).not.toBeNull();
+  });
+
+  it("does not confuse files (README.md container is distinct)", () => {
+    mountRealDom();
+    const container = findFileContainer(document, "README.md");
+    expect(container).not.toBeNull();
+    expect(container?.textContent).toContain("README.md");
+    expect(container?.textContent).not.toContain("client.py");
+  });
+
+  it("finds the new-side line cell by data-line-number + data-diff-side", () => {
+    mountRealDom();
+    const container = findFileContainer(document, FILE)!;
+    const cell = findLineCell(container, 5);
+    expect(cell).not.toBeNull();
+    expect(cell?.getAttribute("data-diff-side")).toBe("right");
+    expect(cell?.getAttribute("data-line-number")).toBe("5");
+  });
+
+  it("injects the flag card as a row after the matched line's tr", () => {
+    mountRealDom();
+    const result = injectFlagCard(document, makeFlag({ file: FILE, line: 5 }));
+    expect(result).toBe("injected-row");
+    const card = document.querySelector("[data-chesterton-card-id]");
+    expect(card).not.toBeNull();
+    const row = card?.closest("tr");
+    expect(row?.previousElementSibling?.querySelector('[data-line-number="5"]')).not.toBeNull();
+  });
+
+  it("falls back to the file heading when the line is not in the DOM (virtualized rows)", () => {
+    mountRealDom();
+    const result = injectFlagCard(document, makeFlag({ id: 99, file: FILE, line: 400 }));
+    expect(result).toBe("injected-header");
+    const card = document.querySelector('[data-chesterton-card-id="99"]');
+    expect(card).not.toBeNull();
+    // Anchored inside the right file's container, never lost silently.
+    expect(card?.closest('div[id^="diff-"]')?.textContent).toContain(FILE);
   });
 });

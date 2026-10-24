@@ -12,6 +12,7 @@
     {
       "matches": [
         "https://github.com/*/*/pull/*/files*",
+        "https://github.com/*/*/pull/*/changes*",
         "http://localhost:4100/github/*/*/pull/*/files*"
       ],
       "js": ["content.js"],
