@@ -142,29 +142,34 @@ inline flag — runs deterministically with zero external credentials. `CHESTERT
 switches base URLs to the real APIs; every service is written against the same HTTP contracts in
 both modes (see `docs/contracts.md`).
 
+**Status: hybrid mode is built and verified live** — a real GitHub App posts real check runs on
+[the real demo repo](https://github.com/tiffany-mares/chesterton-demo-storefront) via live
+webhooks (Cloudflare Tunnel), with citations resolving to a real Slack workspace and real Linear
+tickets; only Estelle itself still runs as the mock, pending credentials. Boot commands, the
+tunnel/webhook procedure, state resets, and every known gotcha live in
+**[docs/runbook.md](docs/runbook.md)** — read that before demo day.
+
 ### Credential checklist for real mode
 
-This is the Phase-0 checklist from `docs/build_plan.md` — work through it *before* flipping
-`CHESTERTON_MODE=real`:
+This is the Phase-0 checklist from `docs/build_plan.md`. Items are checked off as they were
+completed and verified:
 
 - [ ] **Estelle access** — confirm API access from your own services, which languages/content it
       indexes, and whether it can ingest a seeded Slack and Linear workspace (or fall back to
-      GitHub-only evidence: PR discussions and Issues).
+      GitHub-only evidence: PR discussions and Issues). *(Pending credentials; the verdict
+      service's adapter is ready: `ESTELLE_URL` + `ESTELLE_API_KEY`.)*
 - [ ] **Estelle reasoning** — confirm whether it can answer a contradiction question directly, or
       only retrieve. This decides how much reasoning lives in the Go `verdict` service's prompt.
-- [ ] **GitHub App** — create one with:
-  - `pull_request` webhook subscription
-  - **Checks: write** (post check runs)
-  - **Pull requests: write** (plaque suggestion comments)
-  - **Contents: read** (fetch diffs)
-  - Set `GITHUB_WEBHOOK_SECRET` to the app's webhook secret and `GITHUB_TOKEN` to an installation
-    token.
-- [ ] **Slack** — a bot with `chat:write` (and ideally `chat:write.customize`) scopes, invited to
-      the channels Estelle should cite from. Set `SLACK_BOT_TOKEN`.
-- [ ] **Linear** — an API key with read access to the relevant project(s), and the GitHub
-      integration turned on so ticket ↔ PR links resolve. Set `LINEAR_API_KEY`.
-- [ ] **Webhook tunnel** — a Cloudflare Tunnel (free) or a small cloud instance so GitHub can
-      reach your gateway; set an AWS billing alarm on day one if using EC2.
+- [x] **GitHub App** — `chesterton-tiffany-mares`, created via the manifest flow with the
+      `pull_request` webhook, **Checks: write**, **Pull requests: write**, **Contents: read**.
+      The gateway mints installation tokens itself (`GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` /
+      `GITHUB_APP_INSTALLATION_ID`) — check runs cannot be created with a classic PAT.
+- [x] **Slack** — bot with `chat:write`, `channels:manage`, `channels:read`; it creates and posts
+      the `#oncall` threads itself. `SLACK_BOT_TOKEN` + `SLACK_CHANNEL_ID`.
+- [x] **Linear** — API key + `LINEAR_TEAM_ID` (`issueCreate` requires a team id). Seeding creates
+      the tickets for real.
+- [x] **Webhook tunnel** — Cloudflare quick tunnel verified end-to-end (GitHub delivered a live
+      `synchronize` webhook through it); see the runbook for the URL-rotation procedure.
 
 Env vars live in `.env.example` at the repo root — copy to `.env` and fill in the real-mode
 section once the checklist above is done.
