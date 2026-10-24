@@ -8,6 +8,17 @@
 # `cloudflared tunnel --url http://localhost:4000`), and the demo repo must
 # be added to the App installation before firing PRs.
 services:
+  # Re-run seeding with real Slack/Linear posting (Phase 4):
+  #   docker compose --env-file ../.env -f docker-compose.yml \
+  #     -f docker-compose.real.yml run --rm seed
+  # then restart mocks (reloads knowledge.json) and re-import into ledger.
+  seed:
+    environment:
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:-}
+      LINEAR_API_KEY: ${LINEAR_API_KEY:-}
+      LINEAR_TEAM_ID: ${LINEAR_TEAM_ID:-}
+
   gateway:
     environment:
       GITHUB_API_URL: https://api.github.com
