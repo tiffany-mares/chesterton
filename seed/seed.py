@@ -42,14 +42,18 @@ def load_fences() -> list:
 
 
 def _rmtree(path: Path) -> None:
-    """shutil.rmtree, but tolerant of git's read-only object files on Windows."""
-    for root, dirs, files in os.walk(path):
-        for name in dirs + files:
-            try:
-                os.chmod(os.path.join(root, name), stat.S_IWRITE)
-            except OSError:
-                pass
-    shutil.rmtree(path)
+    """shutil.rmtree, but tolerant of git's read-only object files on Windows.
+
+    Chmod only on failure: pre-chmodding everything to S_IWRITE (0o200)
+    strips read/execute from directories on POSIX, which makes them
+    untraversable and breaks the removal it was trying to help.
+    """
+
+    def _onexc(func, p, _exc):
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+
+    shutil.rmtree(path, onexc=_onexc)
 
 
 def main(argv=None) -> int:
