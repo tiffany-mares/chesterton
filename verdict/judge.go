@@ -17,6 +17,11 @@ import (
 
 const maxConcurrentEstelleCalls = 4
 
+// judgeTimeout bounds one whole /judge call. Overridable via
+// VERDICT_JUDGE_TIMEOUT_SECONDS (set in main) — a real LLM-backed Estelle on
+// a many-hunk PR can need far more than the mock's instant answers.
+var judgeTimeout = 30 * time.Second
+
 // sentinel cache value meaning "this hunk/comment was checked and produced
 // no flag" (as opposed to "not cached yet").
 const noFlagSentinel = "null"
@@ -45,7 +50,7 @@ func (s *Server) handleJudge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), judgeTimeout)
 	defer cancel()
 
 	hunkByHash := make(map[string]Hunk, len(req.Hunks))

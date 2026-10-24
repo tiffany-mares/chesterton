@@ -5,7 +5,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
+
+func TestGetenvSeconds(t *testing.T) {
+	if got := getenvSeconds("VERDICT_TEST_UNSET", 20*time.Second); got != 20*time.Second {
+		t.Fatalf("unset: expected fallback 20s, got %v", got)
+	}
+	t.Setenv("VERDICT_TEST_TIMEOUT", "90")
+	if got := getenvSeconds("VERDICT_TEST_TIMEOUT", 20*time.Second); got != 90*time.Second {
+		t.Fatalf("set: expected 90s, got %v", got)
+	}
+	t.Setenv("VERDICT_TEST_TIMEOUT", "not-a-number")
+	if got := getenvSeconds("VERDICT_TEST_TIMEOUT", 20*time.Second); got != 20*time.Second {
+		t.Fatalf("invalid: expected fallback 20s, got %v", got)
+	}
+}
 
 func TestHealthz(t *testing.T) {
 	mux := newMux(NewServer(
