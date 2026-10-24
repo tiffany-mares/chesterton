@@ -7,7 +7,7 @@
       "base": "main",
       "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "diff_file": "prs/1.diff",
-      "author": "Marcus"
+      "author": "Person 2"
     },
     {
       "number": 2,
@@ -16,7 +16,7 @@
       "base": "main",
       "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "diff_file": "prs/2.diff",
-      "author": "Sam"
+      "author": "Person 4"
     },
     {
       "number": 3,
@@ -34,7 +34,7 @@
       "base": "main",
       "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
       "diff_file": "prs/101.diff",
-      "author": "Marcus"
+      "author": "Person 2"
     }
   ]
 }

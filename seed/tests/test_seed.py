@@ -51,9 +51,9 @@ def test_commits_have_backdated_author_and_several_fake_authors(repo_dir, fences
     out = git(repo_dir, "log", "--format=%an|%ad", "--date=short", "main")
     lines = [l for l in out.splitlines() if l]
     authors = {l.split("|")[0] for l in lines}
-    # several fake authors, including Priya and Marcus per the brief
-    assert "Priya" in authors
-    assert "Marcus" in authors
+    # several fake authors, including Person 1 and Person 2 per the brief
+    assert "Person 1" in authors
+    assert "Person 2" in authors
     assert len(authors) >= 4
     # all commit dates are backdated (well before this task was written)
     dates = {l.split("|")[1] for l in lines}
@@ -171,8 +171,8 @@ def test_retry_cap_slack_thread_matches_build_plan(slack_data):
     for thread in slack_data["threads"]:
         for msg in thread["messages"]:
             texts.append((msg["user"], msg["text"]))
-    assert ("Priya", "checkout is hammering payments, retries are unbounded") in texts
-    assert ("Marcus", "capping at 3 with backoff, ticket incoming") in texts
+    assert ("Person 1", "checkout is hammering payments, retries are unbounded") in texts
+    assert ("Person 2", "capping at 3 with backoff, ticket incoming") in texts
 
 
 def test_linear_json_shape(linear_data, fences):
@@ -257,6 +257,29 @@ def test_reset_flag_wipes_and_reseeds(tmp_path):
     second = run_seed(out_dir, extra_args=["--reset"])
     assert second.returncode == 0
     assert not marker.exists()
+    assert (out_dir / "knowledge.json").exists()
+
+
+def test_seeding_into_existing_empty_dir_succeeds(tmp_path):
+    # The compose seed job's --out is a volume MOUNT POINT: it already exists
+    # (and is empty) on first run, and can never be rmdir'd. Both runs below
+    # must work without removing the directory itself.
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    first = run_seed(out_dir)
+    assert first.returncode == 0
+    assert (out_dir / "knowledge.json").exists()
+
+
+def test_reset_preserves_the_out_dir_itself(tmp_path):
+    # --reset must clear contents, not delete+recreate the directory, so a
+    # mounted volume keeps working (inode stays the same).
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    ino_before = out_dir.stat().st_ino
+    assert run_seed(out_dir).returncode == 0
+    assert run_seed(out_dir, extra_args=["--reset"]).returncode == 0
+    assert out_dir.stat().st_ino == ino_before
     assert (out_dir / "knowledge.json").exists()
 
 

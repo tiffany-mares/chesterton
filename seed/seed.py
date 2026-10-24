@@ -56,6 +56,20 @@ def _rmtree(path: Path) -> None:
     shutil.rmtree(path, onexc=_onexc)
 
 
+def _clear_dir(path: Path) -> None:
+    """Remove a directory's contents without removing the directory itself.
+
+    --reset must work when the output directory is a Docker volume mount
+    point (compose mounts the seed-data volume at /out): removing the mount
+    point itself fails with EBUSY, but clearing its contents is fine.
+    """
+    for child in path.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            _rmtree(child)
+        else:
+            child.unlink()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -71,9 +85,11 @@ def main(argv=None) -> int:
     out_dir = Path(args.out).resolve()
 
     if args.reset and out_dir.exists():
-        _rmtree(out_dir)
+        _clear_dir(out_dir)
 
-    if out_dir.exists():
+    # An existing EMPTY directory is fine (a freshly created volume mount);
+    # only a non-empty one needs --reset.
+    if out_dir.exists() and any(out_dir.iterdir()):
         print(
             "error: %s already exists. Re-run with --reset to wipe and re-seed."
             % out_dir,
@@ -81,7 +97,7 @@ def main(argv=None) -> int:
         )
         return 1
 
-    out_dir.mkdir(parents=True, exist_ok=False)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     fences = load_fences()
     print("Seeding demo world into %s (%d fences) ..." % (out_dir, len(fences)))

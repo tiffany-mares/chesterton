@@ -124,12 +124,12 @@ def _two_fences():
     return [
         {
             "id": "retry-cap",
-            "slack": [["priya", "incident"]],
+            "slack": [["person1", "incident"]],
             "linear": {"key": "ENG-212", "title": "Cap retries"},
         },
         {
             "id": "oversell-guard",
-            "slack": [["marcus", "oversold"]],
+            "slack": [["person2", "oversold"]],
             "linear": {"key": "ENG-300", "title": "Guard stock"},
         },
     ]
@@ -158,7 +158,7 @@ def test_maybe_real_prints_fallback_summary(monkeypatch, capsys):
     monkeypatch.setattr(
         fixtures.real_mode,
         "post_slack_thread",
-        lambda channel, messages: "https://x/p1" if messages[0]["user"] == "priya" else None,
+        lambda channel, messages: "https://x/p1" if messages[0]["user"] == "person1" else None,
     )
     monkeypatch.setattr(fixtures.real_mode, "create_linear_ticket", lambda t, d: None)
     fixtures._maybe_real(_two_fences())
@@ -167,3 +167,55 @@ def test_maybe_real_prints_fallback_summary(monkeypatch, capsys):
     assert "slack 1/2" in out
     assert "linear 0/2" in out
     assert "oversell-guard" in out  # named as a fallback
+
+
+# ---------------------------------------------------------------------------
+# pr-type citations: REAL_REPO_URL switches mock PR pages to real commit URLs
+# ---------------------------------------------------------------------------
+
+
+def _knowledge_for_pr_citation(monkeypatch):
+    from repo_builder import PrEntry, RepoInfo
+
+    fences = [
+        {
+            "id": "retry-cap",
+            "code": "MAX_RETRIES = 3",
+            "summary": "s",
+            "pr": {"title": "Cap payment retries (fixes ENG-212)", "author": "Person 2"},
+        }
+    ]
+    repo_info = RepoInfo(
+        repo_dir="unused",
+        fence_anchors={"retry-cap": {"file": "f.py", "line_start": 5, "line_end": 5}},
+        demo_prs=[],
+        historical_prs=[
+            PrEntry(
+                number=101,
+                title="Cap payment retries (fixes ENG-212)",
+                branch="fix/retry-cap",
+                base="main",
+                head_sha="dacd10f3704d706a175b7c89a2c9126d4f2c5a5e",
+                diff_file="prs/101.diff",
+                author="Person 2",
+            )
+        ],
+    )
+    return fixtures.build_knowledge_json(fences, repo_info, "http://localhost:4100", {}, {})
+
+
+def test_pr_citation_uses_mock_page_by_default(monkeypatch):
+    monkeypatch.delenv("REAL_REPO_URL", raising=False)
+    knowledge = _knowledge_for_pr_citation(monkeypatch)
+    url = knowledge["fences"][0]["citations"][0]["url"]
+    assert url == "http://localhost:4100/github/acme/storefront/pull/101/files"
+
+
+def test_pr_citation_uses_real_commit_url_when_env_set(monkeypatch):
+    monkeypatch.setenv("REAL_REPO_URL", "https://github.com/tiffany-mares/chesterton-demo-storefront")
+    knowledge = _knowledge_for_pr_citation(monkeypatch)
+    url = knowledge["fences"][0]["citations"][0]["url"]
+    assert url == (
+        "https://github.com/tiffany-mares/chesterton-demo-storefront"
+        "/commit/dacd10f3704d706a175b7c89a2c9126d4f2c5a5e"
+    )

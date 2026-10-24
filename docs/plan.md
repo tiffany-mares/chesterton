@@ -31,12 +31,12 @@ Build `seed/` exactly per the "Seed outputs" section of `docs/contracts.md` (rea
   unevenly: ~6 in payments, ~5 in checkout, ~2 in inventory, ~2 in a `services/shared/` util.
   Each fence: `id, file, code (the exact guarded line), summary, slack (list of [user, text]),
   linear ({key, title}), pr ({title, author})`. The retry-cap fence must match the example in
-  build_plan.md (Priya/Marcus dialogue, ENG-212).
+  build_plan.md (Person 1/Person 2 dialogue, ENG-212).
 - `seed/seed.py` (CLI, `python seed.py [--reset] [--out seed/out]`):
   1. Generates the storefront demo repo at `seed/out/demo-repo` — a plausible small Python
      codebase (~8-12 files across checkout/payments/inventory/shared) where every fence's
      `code` line actually appears. Creates it as a real git repo with backdated commits
-     (GIT_AUTHOR_DATE/GIT_COMMITTER_DATE, several fake authors incl. Priya and Marcus): an
+     (GIT_AUTHOR_DATE/GIT_COMMITTER_DATE, several fake authors incl. Person 1 and Person 2): an
      initial scaffold commit, then one "fix" commit per fence (message references the Linear
      key, e.g. "Cap payment retries (fixes ENG-212)").
   2. Creates the three demo branches with exactly the changes specified in contracts.md

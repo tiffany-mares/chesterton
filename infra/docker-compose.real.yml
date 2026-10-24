@@ -18,6 +18,9 @@ services:
       SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:-}
       LINEAR_API_KEY: ${LINEAR_API_KEY:-}
       LINEAR_TEAM_ID: ${LINEAR_TEAM_ID:-}
+      # When set, pr-type citations point at real commits in this repo
+      # instead of mock PR pages (the historical fixes exist as commits).
+      REAL_REPO_URL: ${REAL_REPO_URL:-}
 
   gateway:
     environment:

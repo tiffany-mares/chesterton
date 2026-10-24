@@ -86,8 +86,8 @@ describe("GET /slack/archives/:channel/p:ts", () => {
     const res = await request(app()).get("/slack/archives/oncall/p1700000000");
     expect(res.status).toBe(200);
     expect(res.type).toBe("text/html");
-    expect(res.text).toContain("Priya");
-    expect(res.text).toContain("Marcus");
+    expect(res.text).toContain("Person 1");
+    expect(res.text).toContain("Person 2");
     expect(res.text).toContain("checkout is hammering payments, retries are unbounded");
     expect(res.text).toContain("#oncall: retry cap");
   });

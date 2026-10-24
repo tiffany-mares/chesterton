@@ -38,10 +38,10 @@ fences:
   - id: retry-cap
     file: services/payments/client.py
     code: "MAX_RETRIES = 3"
-    slack: [["Priya", "checkout is hammering payments, retries are unbounded"],
-            ["Marcus", "capping at 3 with backoff, ticket incoming"]]
+    slack: [["Person 1", "checkout is hammering payments, retries are unbounded"],
+            ["Person 2", "capping at 3 with backoff, ticket incoming"]]
     linear: {key: ENG-212, title: "Cap payment retries at 3"}
-    pr: {title: "Cap payment retries (fixes ENG-212)", author: "Marcus"}
+    pr: {title: "Cap payment retries (fixes ENG-212)", author: "Person 2"}
 Done when: Asking Estelle "why is MAX_RETRIES 3?" returns the Slack thread, ENG-212 and the fix PR.
 Phase 2: The floor (3h)
 gateway: POST /webhooks/github verifies the signature, stores the raw payload, and on pull_request opened or synchronize fetches the diff.

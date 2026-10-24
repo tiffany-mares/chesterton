@@ -35,16 +35,16 @@ DEMO_BRANCH_DATE = datetime(2024, 1, 15, 10, 0, 0)
 TZ_OFFSET = "-08:00"
 
 AUTHORS = {
-    "Dana": "dana@storefront.example",
-    "Marcus": "marcus@storefront.example",
-    "Priya": "priya@storefront.example",
+    "Person 5": "person5@storefront.example",
+    "Person 2": "person2@storefront.example",
+    "Person 1": "person1@storefront.example",
     "Jo": "jo@storefront.example",
-    "Alex": "alex@storefront.example",
-    "Sam": "sam@storefront.example",
-    "Lee": "lee@storefront.example",
+    "Person 3": "person3@storefront.example",
+    "Person 4": "person4@storefront.example",
+    "Person 6": "person6@storefront.example",
 }
 
-SCAFFOLD_AUTHOR = "Dana"
+SCAFFOLD_AUTHOR = "Person 5"
 
 
 def _marker(fence_id: str) -> str:
@@ -265,7 +265,7 @@ def build_demo_repo(fences: list, out_dir: Path) -> RepoInfo:
         "MAX_RETRIES = 3",
         "MAX_RETRIES = 50",
         "Bump payment retry limit for a flaky provider",
-        "Marcus",
+        "Person 2",
         0,
     )
 
@@ -277,7 +277,7 @@ def build_demo_repo(fences: list, out_dir: Path) -> RepoInfo:
         'label = "%s: %d available" % (stock.sku, stock.available)\n    return label',
         'summary_text = "%s: %d available" % (stock.sku, stock.available)\n    return summary_text',
         "Refactor: rename local variable in stock describe() for clarity",
-        "Sam",
+        "Person 4",
         5,
     )
 

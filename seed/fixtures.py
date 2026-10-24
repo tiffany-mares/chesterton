@@ -180,7 +180,13 @@ def build_knowledge_json(
 
         if fence.get("pr"):
             pr: PrEntry = pr_by_fence[fence["id"]]
-            url = "%s/github/%s/pull/%d/files" % (mocks_base, REPO_SLUG, pr.number)
+            # The historical "fix PRs" exist as real commits (not PRs) when the
+            # demo repo is pushed to GitHub, so real mode cites the commit URL.
+            real_repo_url = os.environ.get("REAL_REPO_URL", "").rstrip("/")
+            if real_repo_url:
+                url = "%s/commit/%s" % (real_repo_url, pr.head_sha)
+            else:
+                url = "%s/github/%s/pull/%d/files" % (mocks_base, REPO_SLUG, pr.number)
             citations.append({"type": "pr", "url": url, "title": pr.title})
 
         fence_entries.append(

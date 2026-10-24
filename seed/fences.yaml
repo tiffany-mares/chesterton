@@ -23,10 +23,10 @@ fences:
       Payment retries are capped at 3 with backoff, after checkout started
       hammering the payments provider with unbounded retries during an incident.
     slack:
-      - ["Priya", "checkout is hammering payments, retries are unbounded"]
-      - ["Marcus", "capping at 3 with backoff, ticket incoming"]
+      - ["Person 1", "checkout is hammering payments, retries are unbounded"]
+      - ["Person 2", "capping at 3 with backoff, ticket incoming"]
     linear: {key: ENG-212, title: "Cap payment retries at 3"}
-    pr: {title: "Cap payment retries (fixes ENG-212)", author: "Marcus"}
+    pr: {title: "Cap payment retries (fixes ENG-212)", author: "Person 2"}
 
   - id: idempotency-key-check
     file: services/checkout/api.py
@@ -37,9 +37,9 @@ fences:
       network caused duplicate charges.
     slack:
       - ["Jo", "a flaky mobile network is causing double charges on checkout retries"]
-      - ["Alex", "adding an idempotency key check so repeats are no-ops, ticket incoming"]
+      - ["Person 3", "adding an idempotency key check so repeats are no-ops, ticket incoming"]
     linear: {key: ENG-230, title: "De-duplicate checkout requests by idempotency key"}
-    pr: {title: "De-duplicate checkout by idempotency key (fixes ENG-230)", author: "Alex"}
+    pr: {title: "De-duplicate checkout by idempotency key (fixes ENG-230)", author: "Person 3"}
 
   - id: oversell-guard
     file: services/inventory/stock.py
@@ -48,10 +48,10 @@ fences:
       Stock reservations are rejected once the requested quantity exceeds
       what's available, after a flash sale oversold several limited SKUs.
     slack:
-      - ["Sam", "the flash sale oversold three SKUs, reservations went negative"]
-      - ["Priya", "adding a hard guard so reserve() can never oversell, ticket incoming"]
+      - ["Person 4", "the flash sale oversold three SKUs, reservations went negative"]
+      - ["Person 1", "adding a hard guard so reserve() can never oversell, ticket incoming"]
     linear: {key: ENG-240, title: "Reject stock reservations that would oversell"}
-    pr: {title: "Reject reservations that would oversell (fixes ENG-240)", author: "Sam"}
+    pr: {title: "Reject reservations that would oversell (fixes ENG-240)", author: "Person 4"}
 
   # ---- lighter fences: payments (6) ------------------------------------
   - id: payments-default-currency
@@ -61,10 +61,10 @@ fences:
       Charges default to USD when the caller omits a currency, after a null
       currency field crashed the provider integration.
     slack:
-      - ["Marcus", "a null currency field just 500'd the provider call"]
-      - ["Priya", "defaulting to USD when it's missing, ticket incoming"]
+      - ["Person 2", "a null currency field just 500'd the provider call"]
+      - ["Person 1", "defaulting to USD when it's missing, ticket incoming"]
     linear: {key: ENG-205, title: "Default missing charge currency to USD"}
-    pr: {title: "Default missing currency to USD (fixes ENG-205)", author: "Priya"}
+    pr: {title: "Default missing currency to USD (fixes ENG-205)", author: "Person 1"}
 
   - id: payments-backoff-seconds
     file: services/payments/client.py
@@ -73,10 +73,10 @@ fences:
       Retry backoff is fixed at 2 seconds per attempt, after unspaced retries
       from every client landed in the same second and got rate-limited.
     slack:
-      - ["Marcus", "all our retries land in the same second, provider rate-limits us"]
-      - ["Priya", "spacing retries out with a 2s backoff, ticket incoming"]
+      - ["Person 2", "all our retries land in the same second, provider rate-limits us"]
+      - ["Person 1", "spacing retries out with a 2s backoff, ticket incoming"]
     linear: {key: ENG-213, title: "Add 2s backoff between payment retries"}
-    pr: {title: "Add 2s backoff between payment retries (fixes ENG-213)", author: "Marcus"}
+    pr: {title: "Add 2s backoff between payment retries (fixes ENG-213)", author: "Person 2"}
 
   - id: payments-timeout-seconds
     file: services/payments/client.py
@@ -85,10 +85,10 @@ fences:
       The provider client times out at 10 seconds, tuned after a slow
       provider held checkout connections open and pinned worker threads.
     slack:
-      - ["Priya", "provider latency spike is pinning checkout workers"]
-      - ["Marcus", "capping the client timeout at 10s, ticket incoming"]
+      - ["Person 1", "provider latency spike is pinning checkout workers"]
+      - ["Person 2", "capping the client timeout at 10s, ticket incoming"]
     linear: {key: ENG-214, title: "Cap payments client timeout at 10s"}
-    pr: {title: "Cap payments client timeout at 10s (fixes ENG-214)", author: "Marcus"}
+    pr: {title: "Cap payments client timeout at 10s (fixes ENG-214)", author: "Person 2"}
 
   - id: payments-positive-charge
     file: services/payments/client.py
@@ -97,10 +97,10 @@ fences:
       Charges of zero or negative amount are rejected outright, after a
       billing bug sent a negative charge amount to the provider.
     slack:
-      - ["Marcus", "we just sent a negative amount charge to the provider"]
-      - ["Priya", "rejecting non-positive charge amounts, ticket incoming"]
+      - ["Person 2", "we just sent a negative amount charge to the provider"]
+      - ["Person 1", "rejecting non-positive charge amounts, ticket incoming"]
     linear: {key: ENG-201, title: "Reject non-positive charge amounts"}
-    pr: {title: "Reject non-positive charge amounts (fixes ENG-201)", author: "Priya"}
+    pr: {title: "Reject non-positive charge amounts (fixes ENG-201)", author: "Person 1"}
 
   - id: payments-positive-refund
     file: services/payments/client.py
@@ -109,10 +109,10 @@ fences:
       Refunds of zero or negative amount are rejected, mirroring the
       charge-side guard after the same billing bug let a negative refund through.
     slack:
-      - ["Priya", "same billing bug let a negative refund through too"]
-      - ["Marcus", "mirroring the charge guard on refund(), ticket incoming"]
+      - ["Person 1", "same billing bug let a negative refund through too"]
+      - ["Person 2", "mirroring the charge guard on refund(), ticket incoming"]
     linear: {key: ENG-202, title: "Reject non-positive refund amounts"}
-    pr: {title: "Reject non-positive refund amounts (fixes ENG-202)", author: "Marcus"}
+    pr: {title: "Reject non-positive refund amounts (fixes ENG-202)", author: "Person 2"}
 
   - id: payments-dedupe-provider-call
     file: services/payments/provider.py
@@ -121,10 +121,10 @@ fences:
       The provider wrapper ignores a request id it has already sent, after a
       retry storm caused duplicate provider-side charges.
     slack:
-      - ["Marcus", "duplicate request ids are hitting the provider twice"]
-      - ["Priya", "tracking seen request ids and short-circuiting repeats, ticket incoming"]
+      - ["Person 2", "duplicate request ids are hitting the provider twice"]
+      - ["Person 1", "tracking seen request ids and short-circuiting repeats, ticket incoming"]
     linear: {key: ENG-215, title: "Ignore duplicate provider request ids"}
-    pr: {title: "Ignore duplicate provider request ids (fixes ENG-215)", author: "Priya"}
+    pr: {title: "Ignore duplicate provider request ids (fixes ENG-215)", author: "Person 1"}
 
   # ---- lighter fences: checkout (5) ------------------------------------
   - id: checkout-timeout-comment
@@ -135,7 +135,7 @@ fences:
       during its slow periods; see ENG-310.
     slack:
       - ["Jo", "checkout timeouts are firing during the provider's slow periods"]
-      - ["Alex", "bumping the checkout timeout to 30s, ticket incoming"]
+      - ["Person 3", "bumping the checkout timeout to 30s, ticket incoming"]
     linear: {key: ENG-310, title: "Hold checkout timeout at 30s for provider slow periods"}
     pr: {title: "Hold checkout timeout at 30s (fixes ENG-310)", author: "Jo"}
 
@@ -146,7 +146,7 @@ fences:
       A cart that totals to zero or less is rejected before checkout, after a
       stacked promo code let a $0 order through.
     slack:
-      - ["Alex", "a promo code stacked to a $0 order and it still checked out"]
+      - ["Person 3", "a promo code stacked to a $0 order and it still checked out"]
       - ["Jo", "rejecting non-positive cart totals, ticket incoming"]
     linear: {key: ENG-221, title: "Reject carts that total zero or less"}
     pr: {title: "Reject carts totaling zero or less (fixes ENG-221)", author: "Jo"}
@@ -159,9 +159,9 @@ fences:
       large enough to time out checkout.
     slack:
       - ["Jo", "a scripted cart with thousands of items is timing out checkout"]
-      - ["Alex", "capping carts at 50 items, ticket incoming"]
+      - ["Person 3", "capping carts at 50 items, ticket incoming"]
     linear: {key: ENG-222, title: "Cap cart size at 50 items"}
-    pr: {title: "Cap cart size at 50 items (fixes ENG-222)", author: "Alex"}
+    pr: {title: "Cap cart size at 50 items (fixes ENG-222)", author: "Person 3"}
 
   - id: checkout-currency-lock
     file: services/checkout/api.py
@@ -170,10 +170,10 @@ fences:
       Checkout only accepts USD, after a foreign-currency order rounded
       incorrectly and undercharged a customer.
     slack:
-      - ["Alex", "a EUR order rounded wrong and undercharged the customer"]
+      - ["Person 3", "a EUR order rounded wrong and undercharged the customer"]
       - ["Jo", "locking checkout to USD until we support real FX, ticket incoming"]
     linear: {key: ENG-223, title: "Lock checkout to USD only"}
-    pr: {title: "Lock checkout to USD only (fixes ENG-223)", author: "Alex"}
+    pr: {title: "Lock checkout to USD only (fixes ENG-223)", author: "Person 3"}
 
   - id: checkout-address-required
     file: services/checkout/api.py
@@ -183,7 +183,7 @@ fences:
       fraud pattern used empty addresses to mask stolen cards.
     slack:
       - ["Jo", "fraud orders are coming through with no shipping address at all"]
-      - ["Alex", "requiring a shipping address before we charge, ticket incoming"]
+      - ["Person 3", "requiring a shipping address before we charge, ticket incoming"]
     linear: {key: ENG-224, title: "Require a shipping address before charging"}
     pr: {title: "Require shipping address before charging (fixes ENG-224)", author: "Jo"}
 
@@ -195,10 +195,10 @@ fences:
       Restocking with a negative quantity is rejected, after a warehouse feed
       bug silently decremented stock through restock().
     slack:
-      - ["Sam", "the warehouse feed sent a negative restock and silently drained stock"]
-      - ["Priya", "rejecting negative restock quantities, ticket incoming"]
+      - ["Person 4", "the warehouse feed sent a negative restock and silently drained stock"]
+      - ["Person 1", "rejecting negative restock quantities, ticket incoming"]
     linear: {key: ENG-241, title: "Reject negative restock quantities"}
-    pr: {title: "Reject negative restock quantities (fixes ENG-241)", author: "Sam"}
+    pr: {title: "Reject negative restock quantities (fixes ENG-241)", author: "Person 4"}
 
   - id: inventory-reservation-expiry
     file: services/inventory/stock.py
@@ -207,10 +207,10 @@ fences:
       Stock reservations expire after 15 minutes, after abandoned carts held
       reservations indefinitely and caused phantom oversells.
     slack:
-      - ["Sam", "abandoned carts are holding reservations forever, stock looks oversold"]
-      - ["Priya", "expiring reservations after 15 minutes, ticket incoming"]
+      - ["Person 4", "abandoned carts are holding reservations forever, stock looks oversold"]
+      - ["Person 1", "expiring reservations after 15 minutes, ticket incoming"]
     linear: {key: ENG-242, title: "Expire stock reservations after 15 minutes"}
-    pr: {title: "Expire stock reservations after 15 minutes (fixes ENG-242)", author: "Sam"}
+    pr: {title: "Expire stock reservations after 15 minutes (fixes ENG-242)", author: "Person 4"}
 
   # ---- lighter fences: shared (2) ---------------------------------------
   - id: shared-retry-sleep-cap
@@ -220,10 +220,10 @@ fences:
       The shared backoff helper never sleeps longer than 30 seconds, after a
       runaway backoff stalled a background worker for almost an hour.
     slack:
-      - ["Lee", "a worker backed off for almost an hour and never recovered"]
-      - ["Marcus", "capping shared sleep_with_cap() at 30s, ticket incoming"]
+      - ["Person 6", "a worker backed off for almost an hour and never recovered"]
+      - ["Person 2", "capping shared sleep_with_cap() at 30s, ticket incoming"]
     linear: {key: ENG-250, title: "Cap shared backoff sleep at 30s"}
-    pr: {title: "Cap shared backoff sleep at 30s (fixes ENG-250)", author: "Lee"}
+    pr: {title: "Cap shared backoff sleep at 30s (fixes ENG-250)", author: "Person 6"}
 
   - id: shared-idempotency-key-length
     file: services/shared/util.py
@@ -232,7 +232,7 @@ fences:
       Idempotency keys shorter than 16 characters are rejected, after a short,
       guessable key let a replay attack skip a charge.
     slack:
-      - ["Lee", "a 4-character idempotency key just let a request replay skip a charge"]
-      - ["Alex", "requiring at least 16 characters, ticket incoming"]
+      - ["Person 6", "a 4-character idempotency key just let a request replay skip a charge"]
+      - ["Person 3", "requiring at least 16 characters, ticket incoming"]
     linear: {key: ENG-251, title: "Require idempotency keys of at least 16 characters"}
-    pr: {title: "Require idempotency keys >= 16 chars (fixes ENG-251)", author: "Lee"}
+    pr: {title: "Require idempotency keys >= 16 chars (fixes ENG-251)", author: "Person 6"}
