@@ -1,0 +1,23 @@
+# Hybrid-mode overlay: real GitHub (App auth, live webhooks via tunnel),
+# mock Estelle. Values interpolate from the repo's gitignored .env:
+#
+#   docker compose --env-file ../.env \
+#     -f docker-compose.yml -f docker-compose.real.yml up -d gateway verdict
+#
+# The App's webhook must point at a tunnel to localhost:4000 (e.g.
+# `cloudflared tunnel --url http://localhost:4000`), and the demo repo must
+# be added to the App installation before firing PRs.
+services:
+  gateway:
+    environment:
+      GITHUB_API_URL: https://api.github.com
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      GITHUB_APP_ID: ${GITHUB_APP_ID}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
+      GITHUB_APP_INSTALLATION_ID: ${GITHUB_APP_INSTALLATION_ID}
+
+  verdict:
+    environment:
+      # Check runs post to real GitHub with the installation token the
+      # gateway forwards; Estelle stays the mock (base compose env).
+      GITHUB_API_URL: https://api.github.com
