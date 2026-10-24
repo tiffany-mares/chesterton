@@ -219,12 +219,7 @@ Wi-Fi or webhooks fail — the whole stack runs fully offline in mock mode.
 
 **Fence map screenshot:**
 
-> `[ screenshot placeholder — dashboard fence map treemap, payments/checkout lit up as hot
-> spots ]`
->
-> TODO: replace this block with a real screenshot (`docs/fence-map.png`) once the demo repo is
-> seeded and the dashboard has been opened against it — run `./scripts/demo.sh`, open the last
-> tab it prints, and capture the treemap.
+![Fence map — dashboard treemap with payments/checkout as hot spots, side panel showing the retry-cap fence and its citations](docs/fence-map.png)
 
 ## Cut order and risks
 
