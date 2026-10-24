@@ -28,7 +28,8 @@ def _humanize(fence_id: str) -> str:
 def _maybe_real(fences: list) -> dict:
     """Best-effort real-mode posting. Returns {fence_id: {"slack": url|None,
     "linear": url|None}} — only populated when the matching token is set and
-    the call succeeds; otherwise the caller falls back to mock URLs.
+    the call succeeds; otherwise the caller falls back to mock URLs. Ends
+    with a summary so partial fallbacks are visible, not silent.
     """
     real_urls: dict = {}
     have_slack = bool(os.environ.get("SLACK_BOT_TOKEN"))
@@ -36,23 +37,51 @@ def _maybe_real(fences: list) -> dict:
     if not have_slack and not have_linear:
         return real_urls
 
+    # chat.postMessage accepts a channel name, but chat.getPermalink wants a
+    # channel ID — prefer SLACK_CHANNEL_ID when provided.
+    slack_channel = os.environ.get("SLACK_CHANNEL_ID") or SLACK_CHANNEL
+
+    slack_attempted = slack_ok = linear_attempted = linear_ok = 0
+    fallbacks: list = []
     for fence in fences:
         entry = {}
+        fell_back = False
         if have_slack and fence.get("slack"):
+            slack_attempted += 1
             messages = [{"user": u, "text": t} for u, t in fence["slack"]]
-            url = real_mode.post_slack_thread(SLACK_CHANNEL, messages)
+            url = real_mode.post_slack_thread(slack_channel, messages)
             if url:
+                slack_ok += 1
                 entry["slack"] = url
                 print("[real-mode] posted slack thread for %s -> %s" % (fence["id"], url))
+            else:
+                fell_back = True
         if have_linear and fence.get("linear"):
+            linear_attempted += 1
             url = real_mode.create_linear_ticket(
                 fence["linear"]["title"], fence.get("summary", "")
             )
             if url:
+                linear_ok += 1
                 entry["linear"] = url
                 print("[real-mode] created linear ticket for %s -> %s" % (fence["id"], url))
+            else:
+                fell_back = True
         if entry:
             real_urls[fence["id"]] = entry
+        if fell_back:
+            fallbacks.append(fence["id"])
+
+    print(
+        "[real-mode summary] slack %d/%d real, linear %d/%d real%s"
+        % (
+            slack_ok,
+            slack_attempted,
+            linear_ok,
+            linear_attempted,
+            "; mock-URL fallbacks: %s" % ", ".join(fallbacks) if fallbacks else "",
+        )
+    )
     return real_urls
 
 

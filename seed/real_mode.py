@@ -11,14 +11,34 @@ from __future__ import annotations
 
 import json
 import os
+import time
+import urllib.error
 import urllib.request
+
+# Slack's chat.postMessage tier limit is ~1 message/second/channel; seeding
+# posts 18 threads of several messages each, so replies are paced.
+SLACK_PACE_SECONDS = 1.0
+_MAX_429_RETRIES = 3
+_MAX_RETRY_AFTER_SECONDS = 30.0
 
 
 def _request(url, method="GET", payload=None, headers=None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    for attempt in range(_MAX_429_RETRIES + 1):
+        req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code != 429 or attempt == _MAX_429_RETRIES:
+                raise
+            try:
+                wait = float(exc.headers.get("Retry-After", "1"))
+            except (TypeError, ValueError):
+                wait = 1.0
+            wait = min(max(wait, 0.0), _MAX_RETRY_AFTER_SECONDS)
+            print("[real-mode] 429 from %s, retrying in %ss" % (url, wait))
+            time.sleep(wait)
 
 
 def post_slack_thread(channel: str, messages: list) -> str | None:
@@ -47,6 +67,7 @@ def post_slack_thread(channel: str, messages: list) -> str | None:
             return None
         thread_ts = resp["ts"]
         for msg in messages[1:]:
+            time.sleep(SLACK_PACE_SECONDS)
             _request(
                 "https://slack.com/api/chat.postMessage",
                 method="POST",
@@ -70,31 +91,33 @@ def post_slack_thread(channel: str, messages: list) -> str | None:
 
 
 def create_linear_ticket(title: str, description: str) -> str | None:
-    """REAL MODE (untested): create a real Linear issue via its GraphQL API.
+    """REAL MODE (untested against the live API): create a Linear issue via
+    its GraphQL API.
 
-    Returns the issue URL, or None if LINEAR_API_KEY is unset or anything
-    about the call fails. Note: Linear's `issueCreate` mutation REQUIRES a
-    `teamId` input (there is no "API key's default team") -- the mutation
-    below does not supply one, so this call will fail against the real API
-    as written. That's fine for now: this path is untested and not on the
-    demo's critical path (CHESTERTON_MODE=mock never calls it), and the
-    try/except below makes the failure fail-safe (logs and returns None, the
-    caller falls back to the mock URL). Add `teamId` to the mutation's
-    `input` (and thread a team id through as a parameter) before relying on
-    this in real mode.
+    Returns the issue URL, or None if LINEAR_API_KEY / LINEAR_TEAM_ID is
+    unset or anything about the call fails. Linear's `issueCreate` mutation
+    REQUIRES a `teamId` input (there is no "API key's default team"), so
+    both env vars are needed.
     """
     token = os.environ.get("LINEAR_API_KEY")
     if not token:
+        return None
+    team_id = os.environ.get("LINEAR_TEAM_ID")
+    if not team_id:
+        print(
+            "[real-mode] LINEAR_API_KEY is set but LINEAR_TEAM_ID is not; "
+            "issueCreate requires a teamId — falling back to mock URLs"
+        )
         return None
     try:
         headers = {"Authorization": token, "Content-Type": "application/json"}
         body = {
             "query": (
-                "mutation($title: String!, $description: String!) {"
-                " issueCreate(input: {title: $title, description: $description}) {"
+                "mutation($title: String!, $description: String!, $teamId: String!) {"
+                " issueCreate(input: {title: $title, description: $description, teamId: $teamId}) {"
                 " success issue { url } } }"
             ),
-            "variables": {"title": title, "description": description},
+            "variables": {"title": title, "description": description, "teamId": team_id},
         }
         resp = _request(
             "https://api.linear.app/graphql", method="POST", payload=body, headers=headers
