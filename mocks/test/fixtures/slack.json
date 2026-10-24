@@ -14,7 +14,7 @@
       "ts": "1700000006",
       "title": "#oncall: checkout timeout",
       "messages": [
-        { "user": "Jo", "text": "checkout timeouts are firing during the provider's slow periods", "ts": "1700000006" },
+        { "user": "Person 7", "text": "checkout timeouts are firing during the provider's slow periods", "ts": "1700000006" },
         { "user": "Person 3", "text": "bumping the checkout timeout to 30s, ticket incoming", "ts": "1700000007" }
       ]
     }

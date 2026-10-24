@@ -38,7 +38,7 @@ AUTHORS = {
     "Person 5": "person5@storefront.example",
     "Person 2": "person2@storefront.example",
     "Person 1": "person1@storefront.example",
-    "Jo": "jo@storefront.example",
+    "Person 7": "person7@storefront.example",
     "Person 3": "person3@storefront.example",
     "Person 4": "person4@storefront.example",
     "Person 6": "person6@storefront.example",
@@ -289,7 +289,7 @@ def build_demo_repo(fences: list, out_dir: Path) -> RepoInfo:
         "CHECKOUT_TIMEOUT_SECONDS = 30",
         "CHECKOUT_TIMEOUT_SECONDS = 5",
         "Reduce checkout timeout for faster failover",
-        "Jo",
+        "Person 7",
         10,
     )
 

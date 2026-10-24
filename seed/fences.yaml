@@ -36,7 +36,7 @@ fences:
       client requests never double-charge a customer, after a flaky mobile
       network caused duplicate charges.
     slack:
-      - ["Jo", "a flaky mobile network is causing double charges on checkout retries"]
+      - ["Person 7", "a flaky mobile network is causing double charges on checkout retries"]
       - ["Person 3", "adding an idempotency key check so repeats are no-ops, ticket incoming"]
     linear: {key: ENG-230, title: "De-duplicate checkout requests by idempotency key"}
     pr: {title: "De-duplicate checkout by idempotency key (fixes ENG-230)", author: "Person 3"}
@@ -134,10 +134,10 @@ fences:
       Checkout's timeout is held at 30s to give the payments provider room
       during its slow periods; see ENG-310.
     slack:
-      - ["Jo", "checkout timeouts are firing during the provider's slow periods"]
+      - ["Person 7", "checkout timeouts are firing during the provider's slow periods"]
       - ["Person 3", "bumping the checkout timeout to 30s, ticket incoming"]
     linear: {key: ENG-310, title: "Hold checkout timeout at 30s for provider slow periods"}
-    pr: {title: "Hold checkout timeout at 30s (fixes ENG-310)", author: "Jo"}
+    pr: {title: "Hold checkout timeout at 30s (fixes ENG-310)", author: "Person 7"}
 
   - id: checkout-min-cart-total
     file: services/checkout/cart.py
@@ -147,9 +147,9 @@ fences:
       stacked promo code let a $0 order through.
     slack:
       - ["Person 3", "a promo code stacked to a $0 order and it still checked out"]
-      - ["Jo", "rejecting non-positive cart totals, ticket incoming"]
+      - ["Person 7", "rejecting non-positive cart totals, ticket incoming"]
     linear: {key: ENG-221, title: "Reject carts that total zero or less"}
-    pr: {title: "Reject carts totaling zero or less (fixes ENG-221)", author: "Jo"}
+    pr: {title: "Reject carts totaling zero or less (fixes ENG-221)", author: "Person 7"}
 
   - id: checkout-max-items
     file: services/checkout/cart.py
@@ -158,7 +158,7 @@ fences:
       Carts are capped at 50 items, after a scripted abuse case built carts
       large enough to time out checkout.
     slack:
-      - ["Jo", "a scripted cart with thousands of items is timing out checkout"]
+      - ["Person 7", "a scripted cart with thousands of items is timing out checkout"]
       - ["Person 3", "capping carts at 50 items, ticket incoming"]
     linear: {key: ENG-222, title: "Cap cart size at 50 items"}
     pr: {title: "Cap cart size at 50 items (fixes ENG-222)", author: "Person 3"}
@@ -171,7 +171,7 @@ fences:
       incorrectly and undercharged a customer.
     slack:
       - ["Person 3", "a EUR order rounded wrong and undercharged the customer"]
-      - ["Jo", "locking checkout to USD until we support real FX, ticket incoming"]
+      - ["Person 7", "locking checkout to USD until we support real FX, ticket incoming"]
     linear: {key: ENG-223, title: "Lock checkout to USD only"}
     pr: {title: "Lock checkout to USD only (fixes ENG-223)", author: "Person 3"}
 
@@ -182,10 +182,10 @@ fences:
       Checkout refuses to charge a cart with no shipping address, after a
       fraud pattern used empty addresses to mask stolen cards.
     slack:
-      - ["Jo", "fraud orders are coming through with no shipping address at all"]
+      - ["Person 7", "fraud orders are coming through with no shipping address at all"]
       - ["Person 3", "requiring a shipping address before we charge, ticket incoming"]
     linear: {key: ENG-224, title: "Require a shipping address before charging"}
-    pr: {title: "Require shipping address before charging (fixes ENG-224)", author: "Jo"}
+    pr: {title: "Require shipping address before charging (fixes ENG-224)", author: "Person 7"}
 
   # ---- lighter fences: inventory (2) -----------------------------------
   - id: inventory-negative-restock
