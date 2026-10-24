@@ -22,7 +22,9 @@ services:
       POSTGRES_PASSWORD: chesterton
       POSTGRES_DB: chesterton
     ports:
-      - "5432:5432"
+      # Host side is 5433: a locally installed PostgreSQL commonly owns 5432.
+      # In-stack consumers (ledger) use postgres:5432 over the compose network.
+      - "5433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
