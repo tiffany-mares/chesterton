@@ -124,7 +124,7 @@ export default function App() {
         <div className="label-mono mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3 px-8 py-5 text-muted-foreground">
           <span>Chesterton — silence without evidence.</span>
           <span className="flex gap-4">
-            <a className="transition-colors duration-150 hover:text-foreground" href="https://github.com/tiffany-mares/chesterton" target="_blank" rel="noreferrer">Source ↗</a>
+            <a className="transition-colors duration-150 hover:text-foreground" href="https://github.com/tiffany-mares/chesterton-app" target="_blank" rel="noreferrer">Source ↗</a>
             <a className="transition-colors duration-150 hover:text-foreground" href="https://github.com/tiffany-mares/chesterton-demo-storefront/pulls" target="_blank" rel="noreferrer">Demo PRs ↗</a>
           </span>
         </div>
