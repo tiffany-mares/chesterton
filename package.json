@@ -5,5 +5,8 @@
   "description": "Chesterton -- fence-the-reasoning PR bot. Root scripts for cross-service tasks only; each service manages its own dependencies independently.",
   "scripts": {
     "e2e": "node e2e/run.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1"
   }
 }

@@ -94,9 +94,9 @@ await pause(3500);
 
 // Beat 8: dashboard — fence map, hottest tile, verdicts, stats.
 await page.goto(DASH);
-await page.waitForSelector("svg", { timeout: 15000 });
+await page.waitForSelector('button[aria-label*="fences"]', { timeout: 15000 });
 await pause(2500);
-const label = page.locator("text=services/payments/client.py").first();
+const label = page.locator('button[aria-label^="services/payments/client.py"]').first();
 const box = await label.boundingBox();
 if (box) await page.mouse.click(box.x + box.width / 2, box.y + 40);
 await pause(3500);
