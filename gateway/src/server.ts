@@ -35,6 +35,8 @@ export interface CreateAppOptions {
   ledgerUrl: string;
   githubApiUrl: string;
   githubToken: string;
+  /** Real mode: GitHub App installation-token provider; overrides githubToken. */
+  getGithubToken?: () => Promise<string>;
   webhookSecret: string;
   rawEventStore: RawEventStore;
   localState: LocalOverrideState;
@@ -72,6 +74,9 @@ export function createApp(opts: CreateAppOptions): Express {
   app.use(cors());
   app.use(
     express.json({
+      // Express defaults to 100 KB; real GitHub pull_request payloads
+      // routinely exceed that (full PR + user objects + body text).
+      limit: "5mb",
       verify: (req, _res, buf) => {
         (req as Request & { rawBody?: Buffer }).rawBody = buf;
       },
@@ -95,6 +100,7 @@ export function createApp(opts: CreateAppOptions): Express {
         verdictUrl: opts.verdictUrl,
         githubApiUrl: opts.githubApiUrl,
         githubToken: opts.githubToken,
+        getGithubToken: opts.getGithubToken,
         fetchImpl: opts.fetchImpl,
         judgeCache,
       })
@@ -244,8 +250,9 @@ export function createApp(opts: CreateAppOptions): Express {
           return;
         }
 
+        const githubToken = opts.getGithubToken ? await opts.getGithubToken() : opts.githubToken;
         const posted = await buildAndPostPlaqueComment(
-          { githubApiUrl: opts.githubApiUrl, githubToken: opts.githubToken, fetchImpl: opts.fetchImpl },
+          { githubApiUrl: opts.githubApiUrl, githubToken, fetchImpl: opts.fetchImpl },
           repo,
           pr,
           flag

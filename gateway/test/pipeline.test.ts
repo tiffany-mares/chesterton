@@ -239,4 +239,33 @@ describe("runPipeline", () => {
     const result = await runPipeline({ repo: "acme/storefront", pr: 4, headSha: "shaTimeout" }, baseDeps);
     expect(result.flags).toEqual([]);
   });
+
+  it("uses getGithubToken (App installation token) for the diff fetch and installation_token", async () => {
+    let diffAuth = "";
+    const githubPool = mockAgent.get("http://github.test");
+    githubPool
+      .intercept({
+        path: "/repos/acme/storefront/pulls/1",
+        method: "GET",
+        headers: (h) => {
+          diffAuth = h.authorization ?? "";
+          return true;
+        },
+      })
+      .reply(200, DIFF_TEXT);
+    const analyzerPool = mockAgent.get("http://analyzer.test");
+    analyzerPool.intercept({ path: "/analyze", method: "POST" }).reply(200, { hunks: [] });
+    const verdictPool = mockAgent.get("http://verdict.test");
+    verdictPool.intercept({ path: "/judge", method: "POST" }).reply(200, (opts) => {
+      const body = JSON.parse(String(opts.body));
+      expect(body.installation_token).toBe("ghs_minted");
+      return { flags: [], check_run_id: 7 };
+    });
+
+    await runPipeline(
+      { repo: "acme/storefront", pr: 1, headSha: "sha123" },
+      { ...baseDeps, githubToken: "pat-should-be-ignored", getGithubToken: async () => "ghs_minted" }
+    );
+    expect(diffAuth).toBe("Bearer ghs_minted");
+  });
 });

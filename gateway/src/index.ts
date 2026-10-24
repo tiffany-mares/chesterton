@@ -1,8 +1,16 @@
+import { createInstallationTokenProvider, loadAppAuthConfig } from "./clients/githubApp.js";
 import { loadConfig } from "./config.js";
 import { createApp } from "./server.js";
 import { createRawEventStore, LocalOverrideState } from "./store.js";
 
 const config = loadConfig();
+
+// Real mode: when GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY /
+// GITHUB_APP_INSTALLATION_ID are all set, GitHub calls use minted App
+// installation tokens (check runs require App auth); otherwise GITHUB_TOKEN
+// (or nothing, in mock mode) is used as-is.
+const appAuth = loadAppAuthConfig();
+const getGithubToken = appAuth ? createInstallationTokenProvider(appAuth) : undefined;
 
 const rawEventStore = await createRawEventStore({
   mongoUrl: config.mongoUrl,
@@ -17,6 +25,7 @@ const app = createApp({
   ledgerUrl: config.ledgerUrl,
   githubApiUrl: config.githubApiUrl,
   githubToken: config.githubToken,
+  getGithubToken,
   webhookSecret: config.githubWebhookSecret,
   rawEventStore,
   localState,

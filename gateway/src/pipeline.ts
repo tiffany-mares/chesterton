@@ -27,6 +27,9 @@ export interface PipelineDeps {
   verdictUrl: string;
   githubApiUrl: string;
   githubToken: string;
+  /** Real mode: mints a GitHub App installation token per run (check runs
+   * require App auth, not a PAT). Overrides githubToken when present. */
+  getGithubToken?: () => Promise<string>;
   fetchImpl?: typeof fetch;
   judgeCache?: JudgeCache<Flag[]>;
 }
@@ -36,7 +39,8 @@ export interface PipelineResult {
 }
 
 export async function runPipeline(event: PipelineEvent, deps: PipelineDeps): Promise<PipelineResult> {
-  const diffText = await getPrDiff(deps.githubApiUrl, event.repo, event.pr, deps.githubToken, deps.fetchImpl);
+  const githubToken = deps.getGithubToken ? await deps.getGithubToken() : deps.githubToken;
+  const diffText = await getPrDiff(deps.githubApiUrl, event.repo, event.pr, githubToken, deps.fetchImpl);
   const hunks: Hunk[] = await analyzeDiff(deps.analyzerUrl, diffText, deps.fetchImpl);
 
   // Comments are independent of the triage score filter below: they feed
@@ -62,7 +66,7 @@ export async function runPipeline(event: PipelineEvent, deps: PipelineDeps): Pro
       repo: event.repo,
       pr: event.pr,
       head_sha: event.headSha,
-      installation_token: deps.githubToken ?? "",
+      installation_token: githubToken ?? "",
       hunks: filteredHunks,
       comments,
     },
