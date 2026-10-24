@@ -26,6 +26,8 @@ const app = createApp({
   githubApiUrl: config.githubApiUrl,
   githubToken: config.githubToken,
   getGithubToken,
+  estelleUrl: config.estelleUrl,
+  dashboardUrl: config.dashboardUrl,
   webhookSecret: config.githubWebhookSecret,
   rawEventStore,
   localState,

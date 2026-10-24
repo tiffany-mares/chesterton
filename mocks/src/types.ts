@@ -13,7 +13,9 @@ export interface Fence {
   file: string;
   line_start: number;
   line_end: number;
-  code: string;
+  /** The exact guarded line, or null for ingested decision memory (e.g. an
+   * override) that covers a line range rather than one literal line. */
+  code: string | null;
   summary: string;
   citations: Citation[];
 }

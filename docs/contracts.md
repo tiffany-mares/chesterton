@@ -113,6 +113,14 @@ Response: Verdict (shape above). Deterministic: same input → byte-identical ou
 Request: `{"repo": ..., "file": ..., "comment": "## retry cap is 3", "comment_line": 9, "hunk": Hunk}`
 Response: `{"stale": true|false, "reason": "...", "citations": [Citation]}`
 
+`POST {ESTELLE_URL}/v1/knowledge`
+Request: `{"fence": {id, file, line_start, line_end, summary, citations: [Citation], code?}}`
+Response: `201 {"ok": true, "fences": N}`. Upserts by fence id (re-pushing never duplicates).
+Runtime memory ingestion — the gateway calls this after a successful override so the next PR
+touching those lines cites it. A fence with `code: null` matches ANY hunk overlapping its line
+range in `/v1/ask` (decision memory over a range, vs. the seeded fences' exact guarded line) and
+answers YES with reason `A recorded decision covers these lines: <summary> This change alters them.`
+
 Mock knowledge comes from `seed/out/knowledge.json` (path via env `KNOWLEDGE_FILE`).
 
 ### mocks — GitHub API emulation (subset)
@@ -185,7 +193,7 @@ summary is markdown listing each flag with citations.
 - `GET /decisions?repo=&file=` → list
 - `POST /verdicts` `{repo, pr, head_sha, hunk_hash, decision_id|null, verdict, payload}` — upsert on `(repo, head_sha, hunk_hash)`; `payload` is the full Flag JSON → returns row with `id`
 - `GET /verdicts?repo=&pr=` → `[{id, ..., payload}]`; `pr` optional — omitted returns all rows for the repo
-- `POST /overrides` `{verdict_id, reason, author}` → row; side effect: inserts a new `decision` (source `override`) anchored to the verdict's file/lines so future PRs cite it. (Note: in mock mode the override decision is recorded in the ledger but NOT fed back into mock Estelle's knowledge base — override-informed verdicts are future work.)
+- `POST /overrides` `{verdict_id, reason, author}` → row; side effect: inserts a new `decision` (source `override`) anchored to the verdict's file/lines so future PRs cite it. (The gateway additionally pushes the override into Estelle's knowledge — see `POST {ESTELLE_URL}/v1/knowledge` — so a NEW PR touching the same lines cites the override.)
 - `GET /overrides?repo=` → list joined with verdict info
 - `GET /fences/by-file?repo=` → `[{file, fence_count, loc}]` (`loc` = lines of code if known, else 0)
 - `GET /stats?repo=` → `{verdicts_total, flags_total, overrides_total, false_positive_rate}` (fp rate = overrides/flags, 0 if no flags)

@@ -207,9 +207,10 @@ boots the stack and prints the exact tab URLs for the current `seed/out`.
    "Pinned ✓". Reload the mock PR page: the suggested comment (a `` ```suggestion `` block
    inserting the fence comment line) now renders under the file, same as GitHub would show it.
 7. **Memory grows (20s)** — a reviewer overrides a flag with a reason via the extension. Open the
-   dashboard's Overrides tab: the override is there, and the ledger has recorded a new decision
-   (source `override`) anchored to those lines. (Feeding that override back into mock Estelle's
-   knowledge so a *new* PR on the same lines cites it is future work — see `docs/contracts.md`.)
+   dashboard's Overrides tab: the override is there, the ledger has recorded a new decision
+   (source `override`) anchored to those lines, and the gateway has pushed the override into
+   Estelle's knowledge (`POST /estelle/v1/knowledge`). Open a new PR touching the same lines:
+   Chesterton now cites the override.
 8. **Close on the fence map (25s)** — the dashboard heatmap lights up payments and checkout.
    Click the hottest tile to show its fences and citations. End on the one-liner.
 

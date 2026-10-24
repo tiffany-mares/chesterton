@@ -137,3 +137,43 @@ describe("computeStale", () => {
     expect(result.citations).toEqual([]);
   });
 });
+
+describe("override memory (code: null fences via /v1/knowledge ingestion)", () => {
+  // Fresh fixtures per test: these mutate the knowledge base.
+  function freshFixtures() {
+    return loadFixtures({ seedOutDir: FIXTURES_DIR });
+  }
+
+  const overrideFence = {
+    id: "override-7",
+    file: "services/payments/client.py",
+    line_start: 5,
+    line_end: 5,
+    code: null,
+    summary: "Override by sam: provider now autoscales, cap can move.",
+    citations: [{ type: "override" as const, url: "http://localhost:4600/", title: "Override by sam" }],
+  };
+
+  it("computeAsk cites an ingested override fence for any overlapping change", () => {
+    const fx = freshFixtures();
+    fx.knowledge.fences.push(overrideFence);
+    const result = computeAsk(fx, "acme/storefront", hunk({
+      old_lines: ["MAX_RETRIES = 50"],
+      new_lines: ["MAX_RETRIES = 500"],
+    }));
+    expect(result.verdict).toBe("YES");
+    expect(result.citations).toEqual(overrideFence.citations);
+    expect(result.reason).toContain("provider now autoscales");
+  });
+
+  it("computeAsk is unchanged for files the override does not cover", () => {
+    const fx = freshFixtures();
+    fx.knowledge.fences.push({ ...overrideFence, file: "services/other/file.py" });
+    const result = computeAsk(fx, "acme/storefront", hunk({
+      old_lines: ["MAX_RETRIES = 3"],
+      new_lines: ["MAX_RETRIES = 50"],
+    }));
+    expect(result.verdict).toBe("YES");
+    expect(result.citations).toHaveLength(3); // the seeded retry-cap fence, not the override
+  });
+});

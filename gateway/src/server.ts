@@ -37,6 +37,10 @@ export interface CreateAppOptions {
   githubToken: string;
   /** Real mode: GitHub App installation-token provider; overrides githubToken. */
   getGithubToken?: () => Promise<string>;
+  /** Estelle base URL for the override -> knowledge write-back; no push when unset. */
+  estelleUrl?: string;
+  /** Where override citations link to (the dashboard's overrides view). */
+  dashboardUrl?: string;
   webhookSecret: string;
   rawEventStore: RawEventStore;
   localState: LocalOverrideState;
@@ -67,6 +71,65 @@ function applyLocalOverlay(flags: Flag[], localState: LocalOverrideState): Flag[
     if (localState.isOverridden(flag.id)) return { ...flag, status: "overridden" as const };
     return flag;
   });
+}
+
+/**
+ * Writes an override back into Estelle's knowledge as a code:null fence
+ * anchored to the overridden flag's file/line. The flag is looked up in the
+ * judge cache (same approach as the dismiss route); if it isn't there (e.g.
+ * gateway restart) the push is skipped with a log — the ledger still has the
+ * override decision row, so nothing is lost, only the mock's live memory.
+ */
+async function pushOverrideMemory(
+  opts: CreateAppOptions,
+  judgeCache: JudgeCache<Flag[]>,
+  verdictId: number,
+  overrideId: number | undefined,
+  reason: string,
+  author: string
+): Promise<void> {
+  if (!opts.estelleUrl) return;
+
+  const entry = judgeCache.findEntry((flags) => flags.some((f) => f.id === verdictId));
+  const flag = entry?.value.find((f) => f.id === verdictId);
+  if (!flag) {
+    // eslint-disable-next-line no-console
+    console.warn(`gateway: override ${overrideId ?? "?"}: flag ${verdictId} not in judge cache; skipping Estelle knowledge push`);
+    return;
+  }
+
+  const summary = `Override by ${author}: ${reason}`;
+  const fence = {
+    id: `override-${overrideId ?? verdictId}`,
+    file: flag.file,
+    line_start: flag.line,
+    line_end: flag.line,
+    code: null,
+    summary,
+    citations: [
+      {
+        type: "override",
+        url: opts.dashboardUrl ?? "http://localhost:4600",
+        title: summary,
+      },
+    ],
+  };
+
+  try {
+    const doFetch = opts.fetchImpl ?? fetch;
+    const res = await doFetch(`${opts.estelleUrl}/v1/knowledge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fence }),
+    });
+    if (res.status !== 201) {
+      // eslint-disable-next-line no-console
+      console.warn(`gateway: Estelle knowledge push for override ${overrideId ?? verdictId} returned ${res.status}`);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("gateway: Estelle knowledge push failed", err instanceof Error ? err.message : err);
+  }
 }
 
 export function createApp(opts: CreateAppOptions): Express {
@@ -205,6 +268,12 @@ export function createApp(opts: CreateAppOptions): Express {
       try {
         const created = await createOverride(opts.ledgerUrl, { verdict_id, reason, author }, opts.fetchImpl);
         opts.localState.markOverridden(verdict_id);
+        // "Memory grows": the override is written back into Estelle's
+        // knowledge so the next PR touching these lines cites it (mock:
+        // POST /v1/knowledge; real Estelle: its ingestion API behind the
+        // same path in the adapter). Best-effort — the override itself is
+        // already durable in the ledger.
+        await pushOverrideMemory(opts, judgeCache, verdict_id, (created as { id?: number }).id, reason, author);
         res.status(201).json(created);
       } catch {
         // Ledger down: never lose the override silently either.

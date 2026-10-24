@@ -500,3 +500,89 @@ describe("GET /fences/by-file, /stats, /decisions proxies", () => {
     expect(res.body).toEqual([]);
   });
 });
+
+describe("POST /overrides — override becomes Estelle memory", () => {
+  function cacheWithFlag(): JudgeCache<Flag[]> {
+    const cache = new JudgeCache<Flag[]>();
+    cache.set("acme/storefront", 1, [LEDGER_ROW.payload as Flag]);
+    return cache;
+  }
+
+  async function buildAppWithEstelle(judgeCache?: JudgeCache<Flag[]>) {
+    const rawEventStore = await createRawEventStore({ mongoUrl: undefined, rawEventsDir: tmpDir });
+    const localState = LocalOverrideState.load(path.join(tmpDir, "local-state2.json"));
+    const app = createApp({
+      analyzerUrl: "http://analyzer.test",
+      triageUrl: "http://triage.test",
+      verdictUrl: "http://verdict.test",
+      ledgerUrl: "http://ledger.test",
+      githubApiUrl: "http://github.test",
+      githubToken: "",
+      webhookSecret: "devsecret",
+      estelleUrl: "http://estelle.test",
+      dashboardUrl: "http://dash.test",
+      rawEventStore,
+      localState,
+      judgeCache,
+    });
+    return { app, localState };
+  }
+
+  it("pushes a code:null fence to Estelle's knowledge API after a successful override", async () => {
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/overrides", method: "POST" })
+      .reply(201, { id: 5, verdict_id: 17, reason: "provider autoscales now", author: "sam" });
+    let knowledgeBody: unknown;
+    mockAgent
+      .get("http://estelle.test")
+      .intercept({ path: "/v1/knowledge", method: "POST" })
+      .reply(201, (opts) => {
+        knowledgeBody = JSON.parse(String(opts.body));
+        return { ok: true, fences: 19 };
+      });
+
+    const { app } = await buildAppWithEstelle(cacheWithFlag());
+    const res = await request(app).post("/overrides").send({ verdict_id: 17, reason: "provider autoscales now", author: "sam" });
+    expect(res.status).toBe(201);
+
+    const fence = (knowledgeBody as { fence: Record<string, unknown> }).fence;
+    expect(fence.id).toBe("override-5");
+    expect(fence.file).toBe("services/payments/client.py");
+    expect(fence.line_start).toBe(5);
+    expect(fence.line_end).toBe(5);
+    expect(fence.code).toBeNull();
+    expect(String(fence.summary)).toContain("sam");
+    expect(String(fence.summary)).toContain("provider autoscales now");
+    const citations = fence.citations as Array<Record<string, string>>;
+    expect(citations[0].type).toBe("override");
+    expect(citations[0].url).toBe("http://dash.test");
+  });
+
+  it("still returns 201 when the Estelle knowledge push fails (best-effort)", async () => {
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/overrides", method: "POST" })
+      .reply(201, { id: 6, verdict_id: 17, reason: "r", author: "a" });
+    mockAgent
+      .get("http://estelle.test")
+      .intercept({ path: "/v1/knowledge", method: "POST" })
+      .replyWithError(new Error("ECONNREFUSED"));
+
+    const { app } = await buildAppWithEstelle(cacheWithFlag());
+    const res = await request(app).post("/overrides").send({ verdict_id: 17, reason: "r", author: "a" });
+    expect(res.status).toBe(201);
+  });
+
+  it("skips the push without failing when the flag is not in the judge cache", async () => {
+    mockAgent
+      .get("http://ledger.test")
+      .intercept({ path: "/overrides", method: "POST" })
+      .reply(201, { id: 7, verdict_id: 99, reason: "r", author: "a" });
+    // No estelle intercept: a push attempt would throw MockNotMatchedError.
+
+    const { app } = await buildAppWithEstelle(new JudgeCache<Flag[]>());
+    const res = await request(app).post("/overrides").send({ verdict_id: 99, reason: "r", author: "a" });
+    expect(res.status).toBe(201);
+  });
+});

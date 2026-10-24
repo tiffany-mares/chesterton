@@ -28,6 +28,17 @@ export function computeAsk(fixtures: Fixtures, _repo: string, hunk: Hunk): Verdi
   const candidates = fencesOverlappingHunk(fixtures, hunk);
 
   for (const fence of candidates) {
+    // Ingested decision memory (code === null, e.g. an override pushed via
+    // POST /v1/knowledge) covers its whole line range: any overlapping hunk
+    // is by definition a change to those lines, so it cites the decision.
+    if (fence.code === null) {
+      return {
+        verdict: "YES",
+        reason: `A recorded decision covers these lines: ${fence.summary} This change alters them.`,
+        citations: fence.citations,
+      };
+    }
+
     if (!hunk.old_lines.includes(fence.code)) continue;
 
     if (!hunk.new_lines.includes(fence.code)) {
@@ -103,6 +114,45 @@ export function createEstelleRouter(fixtures: Fixtures): Router {
       return;
     }
     res.json(computeAsk(fixtures, body.repo, body.hunk));
+  });
+
+  // Runtime knowledge ingestion: how new memory (e.g. a reviewer override)
+  // reaches the mock's corpus without re-seeding. Real Estelle would get the
+  // same write through its own ingestion API. Upserts by fence id so
+  // re-pushing the same decision never duplicates it.
+  router.post("/v1/knowledge", (req: Request, res: Response) => {
+    const body = req.body as { fence?: Partial<Fence> };
+    const fence = body?.fence;
+    if (
+      !fence ||
+      typeof fence.id !== "string" ||
+      typeof fence.file !== "string" ||
+      typeof fence.line_start !== "number" ||
+      typeof fence.line_end !== "number" ||
+      typeof fence.summary !== "string" ||
+      !Array.isArray(fence.citations)
+    ) {
+      res.status(400).json({ error: "expected { fence: {id, file, line_start, line_end, summary, citations[], code?} }" });
+      return;
+    }
+
+    const normalized: Fence = {
+      id: fence.id,
+      file: fence.file,
+      line_start: fence.line_start,
+      line_end: fence.line_end,
+      code: typeof fence.code === "string" ? fence.code : null,
+      summary: fence.summary,
+      citations: fence.citations as Fence["citations"],
+    };
+
+    const existing = fixtures.knowledge.fences.findIndex((f) => f.id === normalized.id);
+    if (existing >= 0) {
+      fixtures.knowledge.fences[existing] = normalized;
+    } else {
+      fixtures.knowledge.fences.push(normalized);
+    }
+    res.status(201).json({ ok: true, fences: fixtures.knowledge.fences.length });
   });
 
   router.post("/v1/stale", (req: Request, res: Response) => {

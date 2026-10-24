@@ -13,6 +13,8 @@ export interface Config {
   githubApiUrl: string;
   githubWebhookSecret: string;
   githubToken: string;
+  estelleUrl: string;
+  dashboardUrl: string;
   mongoUrl: string | undefined;
   /** Directory for raw webhook event JSON files when Mongo is unavailable. */
   rawEventsDir: string;
@@ -32,6 +34,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     githubApiUrl: env.GITHUB_API_URL ?? "http://localhost:4100/github/api",
     githubWebhookSecret: env.GITHUB_WEBHOOK_SECRET ?? "devsecret",
     githubToken: env.GITHUB_TOKEN ?? "",
+    estelleUrl: env.ESTELLE_URL ?? "http://localhost:4100/estelle",
+    dashboardUrl: env.DASHBOARD_URL ?? "http://localhost:4600",
     mongoUrl: env.MONGO_URL || undefined,
     rawEventsDir: env.RAW_EVENTS_DIR ?? path.resolve(dataDir, "raw-events"),
     localStateFile: env.LOCAL_STATE_FILE ?? path.resolve(dataDir, "local-state.json"),
