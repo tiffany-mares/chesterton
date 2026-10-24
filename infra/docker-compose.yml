@@ -191,6 +191,10 @@ services:
       GITHUB_API_URL: http://mocks:4100/github/api
       GITHUB_WEBHOOK_SECRET: devsecret
       MONGO_URL: mongodb://mongo:27017/chesterton
+      # Override -> Estelle memory write-back. DASHBOARD_URL is a citation
+      # link opened in the user's browser, so it stays host-side.
+      ESTELLE_URL: http://mocks:4100/estelle
+      DASHBOARD_URL: http://localhost:4600
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/healthz"]
       interval: 5s
