@@ -1,0 +1,343 @@
+# Chesterton on kind — local-only Kubernetes manifests mirroring
+# infra/docker-compose.yml (same images, env, ports, and service-name DNS).
+#
+# UNTESTED against a live cluster: this machine has no kind/kubectl (the
+# outline lists Kubernetes as "local only, first thing cut"). YAML-parse
+# validated only. See infra/kind/README.md for the intended workflow.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chesterton
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seed-data
+  namespace: chesterton
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER, value: chesterton }
+            - { name: POSTGRES_PASSWORD, value: chesterton }
+            - { name: POSTGRES_DB, value: chesterton }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "chesterton", "-d", "chesterton"] }
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres, namespace: chesterton }
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: redis } }
+  template:
+    metadata: { labels: { app: redis } }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports: [{ containerPort: 6379 }]
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: redis, namespace: chesterton }
+spec:
+  selector: { app: redis }
+  ports: [{ port: 6379 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mongo } }
+  template:
+    metadata: { labels: { app: mongo } }
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:7
+          ports: [{ containerPort: 27017 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mongo, namespace: chesterton }
+spec:
+  selector: { app: mongo }
+  ports: [{ port: 27017 }]
+---
+# One-shot seeding job; mocks mounts the same PVC read-only. Single-node
+# kind makes the RWO sharing fine.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed
+  namespace: chesterton
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: infra-seed:latest
+          imagePullPolicy: Never # kind load docker-image infra-seed
+          volumeMounts: [{ name: seed-data, mountPath: /out }]
+      volumes:
+        - name: seed-data
+          persistentVolumeClaim: { claimName: seed-data }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mocks
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mocks } }
+  template:
+    metadata: { labels: { app: mocks } }
+    spec:
+      containers:
+        - name: mocks
+          image: infra-mocks:latest
+          imagePullPolicy: Never
+          env:
+            - { name: PORT, value: "4100" }
+            - { name: SEED_OUT_DIR, value: /seed/out }
+            - { name: GATEWAY_URL, value: "http://gateway:4000" }
+            - { name: GITHUB_WEBHOOK_SECRET, value: devsecret }
+          ports: [{ containerPort: 4100 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4100 }
+            periodSeconds: 5
+          volumeMounts: [{ name: seed-data, mountPath: /seed/out, readOnly: true }]
+      volumes:
+        - name: seed-data
+          persistentVolumeClaim: { claimName: seed-data }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mocks, namespace: chesterton }
+spec:
+  selector: { app: mocks }
+  ports: [{ port: 4100 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diff-analyzer
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: diff-analyzer } }
+  template:
+    metadata: { labels: { app: diff-analyzer } }
+    spec:
+      containers:
+        - name: diff-analyzer
+          image: infra-diff-analyzer:latest
+          imagePullPolicy: Never
+          env: [{ name: PORT, value: "4200" }]
+          ports: [{ containerPort: 4200 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4200 }
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: diff-analyzer, namespace: chesterton }
+spec:
+  selector: { app: diff-analyzer }
+  ports: [{ port: 4200 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triage
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: triage } }
+  template:
+    metadata: { labels: { app: triage } }
+    spec:
+      containers:
+        - name: triage
+          image: infra-triage:latest
+          imagePullPolicy: Never
+          env: [{ name: PORT, value: "4500" }]
+          ports: [{ containerPort: 4500 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4500 }
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: triage, namespace: chesterton }
+spec:
+  selector: { app: triage }
+  ports: [{ port: 4500 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ledger } }
+  template:
+    metadata: { labels: { app: ledger } }
+    spec:
+      containers:
+        - name: ledger
+          image: infra-ledger:latest
+          imagePullPolicy: Never
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: postgres }
+            - { name: DATABASE_URL, value: "postgres://chesterton:chesterton@postgres:5432/chesterton" }
+            - { name: SERVER_PORT, value: "4400" }
+          ports: [{ containerPort: 4400 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4400 }
+            initialDelaySeconds: 30
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ledger, namespace: chesterton }
+spec:
+  selector: { app: ledger }
+  ports: [{ port: 4400 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: verdict
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: verdict } }
+  template:
+    metadata: { labels: { app: verdict } }
+    spec:
+      containers:
+        - name: verdict
+          image: infra-verdict:latest
+          imagePullPolicy: Never
+          env:
+            - { name: PORT, value: "4300" }
+            - { name: ESTELLE_URL, value: "http://mocks:4100/estelle" }
+            - { name: GITHUB_API_URL, value: "http://mocks:4100/github/api" }
+            - { name: LEDGER_URL, value: "http://ledger:4400" }
+            - { name: REDIS_URL, value: "redis://redis:6379" }
+          ports: [{ containerPort: 4300 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4300 }
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: verdict, namespace: chesterton }
+spec:
+  selector: { app: verdict }
+  ports: [{ port: 4300 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: gateway } }
+  template:
+    metadata: { labels: { app: gateway } }
+    spec:
+      containers:
+        - name: gateway
+          image: infra-gateway:latest
+          imagePullPolicy: Never
+          env:
+            - { name: PORT, value: "4000" }
+            - { name: ANALYZER_URL, value: "http://diff-analyzer:4200" }
+            - { name: TRIAGE_URL, value: "http://triage:4500" }
+            - { name: VERDICT_URL, value: "http://verdict:4300" }
+            - { name: LEDGER_URL, value: "http://ledger:4400" }
+            - { name: GITHUB_API_URL, value: "http://mocks:4100/github/api" }
+            - { name: GITHUB_WEBHOOK_SECRET, value: devsecret }
+            - { name: MONGO_URL, value: "mongodb://mongo:27017/chesterton" }
+            - { name: ESTELLE_URL, value: "http://mocks:4100/estelle" }
+            - { name: DASHBOARD_URL, value: "http://localhost:4600" }
+          ports: [{ containerPort: 4000 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 4000 }
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: gateway, namespace: chesterton }
+spec:
+  selector: { app: gateway }
+  ports: [{ port: 4000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: chesterton
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: dashboard } }
+  template:
+    metadata: { labels: { app: dashboard } }
+    spec:
+      containers:
+        - name: dashboard
+          image: infra-dashboard:latest
+          imagePullPolicy: Never
+          ports: [{ containerPort: 4600 }]
+          readinessProbe:
+            httpGet: { path: /, port: 4600 }
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: dashboard, namespace: chesterton }
+spec:
+  selector: { app: dashboard }
+  ports: [{ port: 4600 }]
