@@ -34,3 +34,4 @@ gateway/data/
 *.log
 .DS_Store
 *.docx
+docs/demo-backup/

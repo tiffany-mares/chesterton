@@ -214,9 +214,12 @@ boots the stack and prints the exact tab URLs for the current `seed/out`.
 8. **Close on the fence map (25s)** — the dashboard heatmap lights up payments and checkout.
    Click the hottest tile to show its fences and citations. End on the one-liner.
 
-Demo safety: a backup video of a full run should exist before going on stage; pre-warm the Redis
-cache (the `--keep-alive` boot already fires all three demo PRs once); keep a local fallback if
-Wi-Fi or webhooks fail — the whole stack runs fully offline in mock mode.
+Demo safety: a backup video of a full run should exist before going on stage — generate one with
+`node scripts/record-demo.mjs` against a warmed mock-mode stack (writes
+`docs/demo-backup/chesterton-demo-backup.mp4`, gitignored; walks the flag card, citations,
+silence, stale comment, fence plaque, and dashboard beats with the extension loaded). Pre-warm
+the Redis cache (the `--keep-alive` boot already fires all three demo PRs once); keep a local
+fallback if Wi-Fi or webhooks fail — the whole stack runs fully offline in mock mode.
 
 **Fence map screenshot:**
 
